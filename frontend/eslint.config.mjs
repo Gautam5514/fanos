@@ -10,6 +10,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Previous NEXUS prototype, kept for reference only.
+    "_legacy_nexus/**",
   ]),
 ]);
 
