@@ -1,16 +1,17 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import {
-  LayoutDashboard, Newspaper, Lightbulb, Inbox, Users, Boxes, FolderKanban, Sparkles, ArrowRightLeft, LogOut, UserCog, RotateCcw, Send, Link2, Check, Menu, X, Loader2, ArrowUpRight, TrendingUp, TrendingDown,
+  LayoutDashboard, Newspaper, Lightbulb, Inbox, Users, Boxes, FolderKanban, Sparkles, LogOut, UserCog, Send, Link2, Check, Menu, X, Loader2, ArrowUpRight, TrendingUp, TrendingDown, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { useStore } from '../../lib/store';
 import { askCopilot, COPILOT_SUGGESTIONS, hoursAgo } from '../../lib/ai';
 import { CREATOR } from '../../lib/seed';
 import { Avatar, Button, Chip, Logo, ScoreRing, Sparkline, cx } from '../ui';
+import { Aurora } from '../chrome';
+import ProfileMenu from '../ProfileMenu';
 import { PersonRow, useOpen } from '../shared';
 import Dashboard from './Dashboard';
-import { TestBar } from '../validation';
 import { BriefPage, IdeasPage, OpportunitiesPage, PeoplePage, CommunitiesPage, ProjectsPage } from './Pages';
 
 const NAV = [
@@ -22,23 +23,23 @@ const NAV = [
   ['communities', 'Communities', Boxes],
   ['projects', 'Projects', FolderKanban],
 ];
+// Group headers shown above these items in the sidebar.
+const NAV_SECTION = { dashboard: 'Workspace', ideas: 'Community' };
 
 export default function CreatorApp() {
   const { state, dispatch, intel, auth } = useStore();
-  const live = state.mode === 'live';
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [thinking, setThinking] = useState(false);
   const send = (q) => {
     const question = q.trim().slice(0, 300);
     if (!question) return;
-    dispatch({ type: 'VALIDATION_TASK', task: 'copilot' });
     setMessages((m) => [...m, { role: 'user', text: question }]);
     setThinking(true);
     const local = askCopilot(question, state, intel);
-    // With an LLM configured (live mode), the model rewrites the answer from the same computed data;
+    // With an LLM configured, the model rewrites the answer from the same computed data;
     // the structured cards always come from the deterministic engine.
-    if (live && state.aiEnabled) {
+    if (state.aiEnabled) {
       const context = {
         clusters: intel.clusters.slice(0, 5).map((c) => ({ label: c.label, requests: c.requests, supporters: c.supporters, summary: c.summary })),
         topIdeas: intel.ranked.slice(0, 8).map((i) => ({ title: i.title, score: intel.scored.get(i.id).score, supports: i.supports, volunteers: i.volunteers.length })),
@@ -58,6 +59,11 @@ export default function CreatorApp() {
     }, 650);
   };
   const [mobileNav, setMobileNav] = useState(false);
+  // Collapsible sidebar: full labels ↔ icon-only rail. Persisted per browser.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return typeof window !== 'undefined' && localStorage.getItem('fanos_sidebar_collapsed') === '1'; } catch { return false; }
+  });
+  const toggleCollapsed = () => setCollapsed((c) => { const n = !c; try { localStorage.setItem('fanos_sidebar_collapsed', n ? '1' : '0'); } catch { /* ignore */ } return n; });
   const page = state.creatorPage;
   const go = (p, extra = {}) => { dispatch({ type: 'NAV', patch: { creatorPage: p, ...(p === 'communities' ? { communityId: null } : {}), ...(p === 'projects' && !('openProjectId' in extra) ? { openProjectId: null } : {}), ...extra } }); setMobileNav(false); window.scrollTo({ top: 0 }); };
   const highOpps = intel.opps.filter((o) => !o.ai.isSpam && o.ai.priority >= 50 && o.status === 'new').length;
@@ -69,88 +75,99 @@ export default function CreatorApp() {
   }, []);
 
   const ask = (q) => { setCopilotOpen(true); send(q); };
+  const copyInvite = async () => {
+    try { await navigator.clipboard.writeText(`${window.location.origin}/?join=1`); dispatch({ type: 'TOAST', toast: { text: 'Invite link copied — share it with your followers' } }); } catch { /* ignore */ }
+  };
 
-  const sidebar = (
-    <nav aria-label="Creator navigation" className="flex h-full flex-col bg-night px-3 py-5 text-white">
-      <div className="px-2"><Logo dark /></div>
-      <div className="mt-6 flex items-center gap-3 rounded-2xl bg-night-2 p-3">
-        <Avatar name={CREATOR.name} size={36} />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{CREATOR.name}</p>
-          <p className="truncate text-xs text-white/50">{CREATOR.handle || 'Creator'} • <span className={live ? 'text-[#5ad19a]' : 'text-white/50'}>{live ? '● Live' : 'Demo'}</span></p>
-        </div>
+  const renderSidebar = (mini) => (
+    <nav aria-label="Creator navigation" className={cx('flex h-full flex-col bg-night py-4 text-white', mini ? 'px-2' : 'px-2.5')}>
+      {/* Brand + collapse toggle */}
+      <div className={cx('flex items-center', mini ? 'flex-col gap-2' : 'justify-between px-1.5')}>
+        {mini ? <Logo dark iconOnly /> : <Logo dark />}
+        <button onClick={toggleCollapsed} aria-label={mini ? 'Expand sidebar' : 'Collapse sidebar'} title={mini ? 'Expand' : 'Collapse'}
+          className="hidden rounded-lg p-1.5 text-white/50 transition hover:bg-night-2 hover:text-white lg:inline-flex">
+          {mini ? <PanelLeftOpen className="h-4 w-4" aria-hidden="true" /> : <PanelLeftClose className="h-4 w-4" aria-hidden="true" />}
+        </button>
       </div>
-      <ul className="mt-6 space-y-0.5">
+
+      {/* Primary nav */}
+      <ul className="no-scrollbar -mx-1 mt-3 min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1">
         {NAV.map(([id, label, Icon]) => {
           const active = page === id;
           const badge = id === 'opportunities' ? highOpps : id === 'ideas' ? intel.clusters.length : null;
           return (
-            <li key={id}>
-              <button onClick={() => go(id)} aria-current={active ? 'page' : undefined}
-                className={cx('flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition', active ? 'bg-white text-ink font-semibold' : 'text-white/70 hover:bg-night-2 hover:text-white')}>
-                <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
-                <span className="flex-1 text-left">{label}</span>
-                {badge ? <span className={cx('rounded-full px-1.5 py-0.5 text-[10px] font-semibold', active ? 'bg-accent text-white' : 'bg-night-3 text-white/80')}>{badge}</span> : null}
+            <Fragment key={id}>
+            {NAV_SECTION[id] && (mini
+              ? <li aria-hidden="true" className="mx-3 my-2 h-px bg-white/10" />
+              : <li className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[.16em] text-white/35">{NAV_SECTION[id]}</li>)}
+            <li>
+              <button onClick={() => go(id)} aria-current={active ? 'page' : undefined} title={mini ? label : undefined}
+                className={cx('relative flex w-full items-center rounded-full text-[13px] transition', mini ? 'justify-center p-2.5' : 'gap-2.5 px-3 py-2', active ? 'bg-white font-semibold text-ink shadow-[0_8px_20px_-10px_rgba(255,255,255,.5)]' : 'text-white/65 hover:bg-white/[.07] hover:text-white')}>
+                <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+                {!mini && <span className="flex-1 text-left">{label}</span>}
+                {badge ? (
+                  mini
+                    ? <span className={cx('absolute right-1.5 top-1.5 h-2 w-2 rounded-full', active ? 'bg-accent' : 'bg-coral')} />
+                    : <span className={cx('rounded-full px-1.5 py-0.5 text-[10px] font-semibold', active ? 'bg-accent text-white' : 'bg-night-3 text-white/80')}>{badge}</span>
+                ) : null}
               </button>
             </li>
+            </Fragment>
           );
         })}
       </ul>
-      <button onClick={() => { setCopilotOpen(true); setMobileNav(false); }} className="mt-6 flex items-center gap-3 rounded-xl bg-gradient-to-r from-accent to-[#9b4bf0] px-3 py-2.5 text-sm font-medium shadow-lg shadow-accent/20 transition hover:brightness-110">
-        <Sparkles className="h-[18px] w-[18px]" aria-hidden="true" /><span className="flex-1 text-left">Ask FanOS AI</span><kbd className="rounded bg-white/20 px-1.5 text-[10px]">⌘K</kbd>
-      </button>
-      <div className="mt-auto space-y-0.5 pt-6">
-        {live ? (
-          <>
-            <button onClick={() => dispatch({ type: 'NAV', patch: { view: 'creator-setup' } })} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-white/60 transition hover:bg-night-2 hover:text-white">
-              <UserCog className="h-4 w-4" aria-hidden="true" /> Edit creator profile
-            </button>
-            <button onClick={() => { if (confirm('Reset the sample community content? Real member accounts are kept.')) dispatch({ type: 'RESET' }); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-white/40 transition hover:bg-night-2 hover:text-white">
-              <RotateCcw className="h-4 w-4" aria-hidden="true" /> Reset sample content
-            </button>
-            <button onClick={() => auth.logout()} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-white/60 transition hover:bg-night-2 hover:text-white">
-              <LogOut className="h-4 w-4" aria-hidden="true" /> Log out <span className="ml-auto truncate text-[11px] text-white/40">{state.user?.email}</span>
-            </button>
-          </>
-        ) : (
-          <>
-            <button onClick={() => dispatch({ type: 'NAV', patch: { view: state.meId ? 'member' : 'onboarding' } })} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-white/60 transition hover:bg-night-2 hover:text-white">
-              <ArrowRightLeft className="h-4 w-4" aria-hidden="true" /> Switch to member view
-            </button>
-            <button onClick={() => { if (confirm('Reset all demo data to the original seed?')) dispatch({ type: 'RESET' }); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-white/40 transition hover:bg-night-2 hover:text-white">
-              <RotateCcw className="h-4 w-4" aria-hidden="true" /> Reset demo
-            </button>
-            <button onClick={() => dispatch({ type: 'NAV', patch: { view: 'landing' } })} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm text-white/40 transition hover:bg-night-2 hover:text-white">
-              <LogOut className="h-4 w-4" aria-hidden="true" /> Exit demo
-            </button>
-          </>
-        )}
+
+      {/* Bottom: AI + invite. Account actions (edit profile, log out…) live in the top-bar profile menu. */}
+      <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+        <button onClick={() => { setCopilotOpen(true); setMobileNav(false); }} title={mini ? 'Ask FanOS AI (⌘K)' : undefined}
+          className={cx('flex w-full items-center rounded-full bg-gradient-to-r from-accent to-[#9b4bf0] text-[13px] font-medium shadow-lg shadow-accent/20 transition hover:brightness-110', mini ? 'justify-center p-2.5' : 'gap-2.5 px-3 py-2')}>
+          <Sparkles className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+          {!mini && <><span className="flex-1 text-left">Ask FanOS AI</span><kbd className="rounded-full bg-white/20 px-2 py-0.5 text-[10px]">⌘K</kbd></>}
+        </button>
+        {!mini && <InviteCard />}
       </div>
     </nav>
   );
 
+  const railW = collapsed ? 'lg:w-[72px]' : 'lg:w-64';
+  const railPad = collapsed ? 'lg:pl-[72px]' : 'lg:pl-64';
+  const auroraLeft = collapsed ? 'lg:left-[72px]' : 'lg:left-64';
+
   return (
     <div className="min-h-screen">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 lg:block">{sidebar}</aside>
+      <aside className={cx('fixed inset-y-0 left-0 z-30 hidden w-64 transition-[width] duration-300 ease-out lg:block', railW)}>{renderSidebar(collapsed)}</aside>
       {mobileNav && (
         <div className="fixed inset-0 z-40 bg-ink/40 lg:hidden" onClick={() => setMobileNav(false)}>
-          <aside className="h-full w-72 animate-slide-in" onClick={(e) => e.stopPropagation()}>{sidebar}</aside>
+          <aside className="h-full w-72 animate-slide-in" onClick={(e) => e.stopPropagation()}>{renderSidebar(false)}</aside>
         </div>
       )}
-      <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 border-b border-line bg-paper/85 backdrop-blur-md">
+      <div className={cx('relative transition-[padding] duration-300 ease-out', railPad)}>
+        <Aurora className={cx('h-[560px]', auroraLeft)} />
+        <header className="glass sticky top-0 z-20 border-b border-line/70">
           <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-3 px-4 sm:px-6">
             <button className="rounded-lg p-2 hover:bg-line-2 lg:hidden" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu className="h-5 w-5" /></button>
             <form className="relative max-w-xl flex-1" onSubmit={(e) => { e.preventDefault(); const q = new FormData(e.currentTarget).get('q'); if (q) { ask(String(q)); e.currentTarget.reset(); } }}>
               <Sparkles className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" aria-hidden="true" />
               <label htmlFor="top-ask" className="sr-only">Ask anything about your community</label>
-              <input id="top-ask" name="q" autoComplete="off" placeholder="Ask anything about your community…" className="h-11 w-full rounded-2xl border border-line bg-white pl-10 pr-16 text-sm shadow-sm outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10" />
+              <input id="top-ask" name="q" autoComplete="off" placeholder="Ask anything about your community…" className="h-11 w-full rounded-2xl border border-line bg-white/90 pl-10 pr-16 text-sm shadow-sm outline-none transition focus:border-accent focus:bg-white focus:ring-4 focus:ring-accent/10" />
               <kbd className="absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-line bg-paper px-1.5 py-0.5 text-[10px] text-muted sm:block">⌘K</kbd>
             </form>
-            <InviteLink live={live} />
+            <div className="ml-auto">
+              <ProfileMenu
+                name={CREATOR.name || state.user?.name}
+                email={state.user?.email}
+                sections={[
+                  [
+                    { icon: UserCog, label: 'Edit profile', onClick: () => dispatch({ type: 'NAV', patch: { view: 'creator-setup' } }) },
+                    { icon: Link2, label: 'Copy invite link', onClick: copyInvite },
+                  ],
+                  [{ icon: LogOut, label: 'Log out', onClick: () => auth.logout() }],
+                ]}
+              />
+            </div>
           </div>
         </header>
-        <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8">
+        <main className="relative mx-auto max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8">
           {page === 'dashboard' && <Dashboard go={go} ask={ask} />}
           {page === 'brief' && <BriefPage go={go} ask={ask} />}
           {page === 'ideas' && <IdeasPage />}
@@ -160,23 +177,23 @@ export default function CreatorApp() {
           {page === 'projects' && <ProjectsPage />}
         </main>
       </div>
-      <TestBar />
       <Copilot open={copilotOpen} messages={messages} thinking={thinking} send={send} onClose={() => setCopilotOpen(false)} go={go} />
     </div>
   );
 }
 
 // Live mode: the real link followers use to sign up as members of this community.
-function InviteLink({ live }) {
+// Sidebar row: copy the join link followers use to sign up.
+function InviteCard() {
   const [copied, setCopied] = useState(false);
-  const full = typeof window !== 'undefined' ? `${window.location.origin}/?join=1` : '/?join=1';
-  const url = live ? full.replace(/^https?:\/\//, '') : 'fanos.app/join/kunal';
+  const copy = async () => { try { await navigator.clipboard.writeText(`${window.location.origin}/?join=1`); } catch { /* ignore */ } setCopied(true); setTimeout(() => setCopied(false), 1500); };
   return (
-    <button title={live ? 'Share this link with your followers' : 'Demo link'} onClick={async () => { try { await navigator.clipboard.writeText(live ? full : `https://${url}`); } catch { /* ignore */ } setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-      className="ml-auto hidden items-center gap-2 rounded-xl border border-line bg-white px-3 py-2 text-xs font-medium text-ink-2 transition hover:border-ink/20 md:inline-flex">
-      {copied ? <Check className="h-3.5 w-3.5 text-mint" aria-hidden="true" /> : <Link2 className="h-3.5 w-3.5" aria-hidden="true" />}
-      {copied ? 'Copied!' : url}
-    </button>
+    <div className="flex items-center justify-between gap-2 rounded-full bg-white/[.06] py-1.5 pl-3.5 pr-1.5 ring-1 ring-white/10">
+      <span className="text-[13px] font-medium text-white/85">Invite fans</span>
+      <button onClick={copy} className="inline-flex h-7 items-center gap-1 rounded-full bg-white px-3 text-xs font-semibold text-ink transition hover:bg-white/90">
+        {copied ? <Check className="h-3.5 w-3.5 text-mint" aria-hidden="true" /> : <Link2 className="h-3.5 w-3.5" aria-hidden="true" />}{copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
   );
 }
 

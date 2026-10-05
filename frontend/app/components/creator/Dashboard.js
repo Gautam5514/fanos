@@ -4,9 +4,10 @@ import { useMemo } from 'react';
 import { Sparkles, Flame, Lightbulb, Users, Inbox, Boxes, ArrowRight, Star, Gem, Newspaper, MessageSquareText, Layers, Target, TrendingUp } from 'lucide-react';
 import { useStore } from '../../lib/store';
 import { buildBrief, contributionScore, hiddenGems, trends, fmt, hoursAgo } from '../../lib/ai';
-import { CREATOR, SCALE } from '../../lib/seed';
+import { CREATOR } from '../../lib/seed';
 import { Avatar, Button, SectionTitle, Sparkline, cx } from '../ui';
 import { ClusterCard, IdeaCard, PersonRow, useOpen, clusterHelpers } from '../shared';
+import { Aurora } from '../chrome';
 
 function greeting() {
   const h = new Date().getHours();
@@ -17,7 +18,7 @@ export default function Dashboard({ go, ask }) {
   const { state, intel } = useStore();
   const open = useOpen();
   const brief = useMemo(() => buildBrief(state, intel), [state, intel]);
-  const t = trends(state.topicBoost);
+  const t = trends(state.ideas);
   const gems = hiddenGems(state.members);
   const people = [...state.members].sort((a, b) => contributionScore(b) - contributionScore(a)).slice(0, 3);
   const realOpps = intel.opps.filter((o) => !o.ai.isSpam && o.status !== 'archived').sort((a, b) => b.ai.priority - a.ai.priority);
@@ -26,8 +27,10 @@ export default function Dashboard({ go, ask }) {
   const topCluster = intel.clusters[0];
   const rising = state.members.filter((m) => m.growth >= 100).length;
   const helpers = topCluster ? clusterHelpers(topCluster, state.members) : null;
-  const realMembers = state.members.filter((m) => m.isReal || m.isMe).length;
-  const totalMembers = SCALE.members + realMembers;
+  const totalMembers = state.members.length;
+  const joinedThisWeek = state.members.filter((m) => (m.joinedDaysAgo ?? 99) < 7).length;
+  const totalComments = state.ideas.reduce((n, i) => n + (i.commentsCount || 0), 0);
+  const totalSupports = state.ideas.reduce((n, i) => n + (i.supports || 0), 0);
   const collabRequests = state.ideas.filter((i) => i.status === 'open').reduce((n, i) => n + i.volunteers.length, 0);
   const topTopic = t[0];
   const risingMember = brief.people[0];
@@ -36,53 +39,55 @@ export default function Dashboard({ go, ask }) {
 
   return (
     <div className="space-y-6">
-      {/* Greeting */}
-      <section className="flex flex-col justify-between gap-4 animate-fade-up md:flex-row md:items-end">
-        <div>
-          <p className="text-sm text-muted">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold text-ink sm:text-[34px]">{greeting()}, {CREATOR.firstName} 👋</h1>
-          <p className="mt-1.5 text-[15px] text-ink-2">
-            FanOS analyzed <b className="font-semibold text-ink">{brief.analyzed.toLocaleString('en-US')}</b> activities since yesterday and found <b className="font-semibold text-accent">{brief.things.length} things worth your attention</b>.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" icon={Newspaper} onClick={() => go('brief')}>Read today’s brief</Button>
-          <Button variant="primary" icon={Sparkles} onClick={() => ask('Summarize this week')}>Summarize</Button>
-        </div>
-      </section>
+      {/* Command center: greeting + the noise → signal pipeline in one dark banner */}
+      <section aria-label="Today in your community" className="relative animate-fade-up overflow-hidden rounded-[28px] bg-night p-6 text-white shadow-pop sm:p-8">
+        <Aurora tone="dark" />
+        <div className="relative grid items-center gap-7 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+          <div>
+            <p className="text-sm text-white/55">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+            <h1 className="mt-1 font-display text-3xl font-semibold leading-tight sm:text-[40px]">{greeting()}, <span className="ai-gradient-animated">{CREATOR.firstName}</span> 👋</h1>
+            <p className="mt-2 max-w-md text-[15px] text-white/70">
+              FanOS analyzed <b className="font-semibold text-white">{brief.analyzed.toLocaleString('en-US')}</b> activities since yesterday and found <b className="font-semibold text-white">{brief.things.length} things worth your attention</b>.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button arrow onClick={() => go('brief')} className="bg-white text-ink hover:bg-white/90">Read today’s brief</Button>
+              <Button variant="ghost" pill icon={Sparkles} onClick={() => ask('Summarize this week')} className="text-white/85 ring-1 ring-white/15 hover:bg-white/10 hover:text-white">Summarize</Button>
+            </div>
+          </div>
 
-      {/* Noise → Signal funnel */}
-      <section aria-label="Noise to signal" className="card ai-glow overflow-hidden p-1.5 animate-fade-up">
-        <ol className="grid grid-cols-2 gap-1.5 md:grid-cols-4">
-          {[
-            { n: SCALE.rawInbox.toLocaleString('en-US'), l: 'DMs, comments & posts', s: 'raw inbound this week', icon: MessageSquareText, tone: 'text-muted' },
-            { n: SCALE.ideasThisWeek + state.newActivity, l: 'Structured ideas', s: `${SCALE.spamFiltered.toLocaleString('en-US')} spam auto-filtered`, icon: Lightbulb, tone: 'text-amber' },
-            { n: intel.clusters.length, l: 'AI topic clusters', s: 'duplicates merged', icon: Layers, tone: 'text-sky' },
-            { n: brief.things.length, l: 'Things you need to know', s: 'ranked by Signal Score', icon: Target, tone: 'text-accent', hl: true },
-          ].map((x, i) => (
-            <li key={x.l} className={cx('relative rounded-2xl p-4', x.hl ? 'bg-ink text-white' : 'bg-white/70')}>
-              <x.icon className={cx('h-4 w-4', x.hl ? 'text-white/70' : x.tone)} aria-hidden="true" />
-              <p className={cx('mt-3 font-display text-3xl font-semibold', x.hl ? 'text-white' : 'text-ink')}>{x.n}</p>
-              <p className={cx('text-sm font-medium', x.hl ? 'text-white' : 'text-ink')}>{x.l}</p>
-              <p className={cx('text-xs', x.hl ? 'text-white/60' : 'text-muted')}>{x.s}</p>
-              {i < 3 && <ArrowRight className="absolute -right-3 top-1/2 z-10 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-white p-1 text-muted shadow md:block" aria-hidden="true" />}
-            </li>
-          ))}
-        </ol>
+          <ol aria-label="Noise to signal" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[
+              { n: totalComments.toLocaleString('en-US'), l: 'Comments', s: `${totalSupports.toLocaleString('en-US')} supports`, icon: MessageSquareText },
+              { n: state.ideas.length.toLocaleString('en-US'), l: 'Ideas shared', s: 'by your members', icon: Lightbulb },
+              { n: intel.clusters.length, l: 'Topic clusters', s: 'duplicates merged', icon: Layers },
+              { n: brief.things.length, l: 'Need you', s: 'ranked by Signal', icon: Target, hl: true },
+            ].map((x, i) => (
+              <li key={x.l} className={cx('relative rounded-2xl p-4 ring-1', x.hl ? 'bg-gradient-to-br from-accent via-[#8a3df0] to-coral ring-white/20 shadow-[0_18px_40px_-14px_rgba(176,63,240,.8)]' : 'bg-white/[.06] ring-white/10')}>
+                <x.icon className={cx('h-4 w-4', x.hl ? 'text-white' : 'text-white/55')} aria-hidden="true" />
+                <p className="mt-3 font-display text-[28px] font-semibold leading-none">{x.n}</p>
+                <p className="mt-1.5 text-[13px] font-medium">{x.l}</p>
+                <p className={cx('text-[11px]', x.hl ? 'text-white/80' : 'text-white/45')}>{x.s}</p>
+                {i < 3 && <ArrowRight className="absolute -right-[11px] top-1/2 z-10 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-night-3 p-1 text-white/70 ring-1 ring-white/15 sm:block" aria-hidden="true" />}
+              </li>
+            ))}
+          </ol>
+        </div>
       </section>
 
       {/* KPIs */}
-      <section aria-label="Community metrics" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      <section aria-label="Community metrics" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          { label: 'Members', value: totalMembers.toLocaleString('en-US'), sub: realMembers ? `${realMembers} joined via FanOS` : `+${SCALE.membersThisWeek.toLocaleString('en-US')} this week`, icon: Users, to: 'people' },
-          { label: 'Communities', value: state.communities.length, sub: 'interest-based', icon: Boxes, to: 'communities' },
-          { label: 'Ideas submitted', value: SCALE.ideasThisWeek + state.newActivity, sub: `${state.ideas.length} tracked in detail`, icon: Lightbulb, to: 'ideas' },
-          { label: 'Collaboration requests', value: collabRequests, sub: `${rising} rising contributors`, icon: TrendingUp, to: 'ideas' },
-          { label: 'Opportunities', value: realOpps.length, sub: `${high.length} high-priority`, icon: Inbox, to: 'opportunities' },
+          { label: 'Members', value: totalMembers.toLocaleString('en-US'), sub: totalMembers ? `${joinedThisWeek} joined this week` : 'share your invite link', icon: Users, to: 'people', tile: 'tile-accent', chip: 'bg-accent-soft text-accent' },
+          { label: 'Communities', value: state.communities.length, sub: 'interest-based', icon: Boxes, to: 'communities', tile: 'tile-sky', chip: 'bg-sky-soft text-sky' },
+          { label: 'Collaboration requests', value: collabRequests, sub: `${rising} rising contributors`, icon: TrendingUp, to: 'ideas', tile: 'tile-mint', chip: 'bg-mint-soft text-mint' },
+          { label: 'Opportunities', value: realOpps.length, sub: `${high.length} high-priority`, icon: Inbox, to: 'opportunities', tile: 'tile-coral', chip: 'bg-coral-soft text-coral' },
         ].map((k) => (
-          <button key={k.label} onClick={() => go(k.to)} className="card group p-4 text-left transition hover:-translate-y-0.5 hover:border-ink/15">
-            <div className="flex items-center justify-between text-muted"><span className="text-xs font-medium">{k.label}</span><k.icon className="h-4 w-4 transition group-hover:text-accent" aria-hidden="true" /></div>
-            <p className="mt-2 font-display text-[26px] font-semibold leading-none text-ink">{k.value}</p>
+          <button key={k.label} onClick={() => go(k.to)} className={cx('tile group p-4 text-left', k.tile)}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-muted">{k.label}</span>
+              <span className={cx('flex h-8 w-8 items-center justify-center rounded-full transition group-hover:scale-110', k.chip)}><k.icon className="h-4 w-4" aria-hidden="true" /></span>
+            </div>
+            <p className="mt-3 font-display text-[30px] font-semibold leading-none text-ink">{k.value}</p>
             <p className="mt-1.5 text-xs text-muted">{k.sub}</p>
           </button>
         ))}
@@ -103,12 +108,15 @@ export default function Dashboard({ go, ask }) {
                 <ArrowRight className="h-5 w-5 text-ink-2" aria-hidden="true" />
               </button>
             )}
+            {!topCluster && !t.length && (
+              <p className="rounded-2xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">Nothing is trending yet. Topics appear here as soon as members share ideas.</p>
+            )}
             <ul className="grid gap-x-8 gap-y-1 sm:grid-cols-2">
               {t.slice(0, 6).map((x) => (
                 <li key={x.topic} className="flex items-center gap-3 border-b border-line-2 py-2.5 last:border-0">
                   <span className="flex-1">
                     <span className="block text-sm font-medium text-ink">{x.topic}</span>
-                    <span className="text-xs text-muted">{x.thisWeek} mentions</span>
+                    <span className="text-xs text-muted">{x.thisWeek} idea{x.thisWeek === 1 ? '' : 's'} this week</span>
                   </span>
                   <Sparkline data={x.spark} width={80} height={26} color={x.change >= 0 ? '#5b3df5' : '#ff5a36'} />
                   <span className={cx('w-14 text-right text-sm font-semibold', x.change >= 0 ? 'text-mint' : 'text-coral')}>{x.change >= 0 ? '↑' : '↓'}{Math.abs(x.change)}%</span>
@@ -141,7 +149,7 @@ export default function Dashboard({ go, ask }) {
             <p className="mt-1 text-sm text-muted">{brief.analyzed.toLocaleString('en-US')} community activities analyzed</p>
             <dl className="mt-4 space-y-3 text-sm">
               {[
-                ['Top topic', topTopic ? `${topTopic.topic} ↑${topTopic.change}%` : '—', () => ask('What topics are trending?')],
+                ['Top topic', topTopic ? `${topTopic.topic} (${topTopic.thisWeek} this week)` : '—', () => ask('What topics are trending?')],
                 ['Top idea', brief.topIdeas[0]?.title || '—', () => brief.topIdeas[0] && open.idea(brief.topIdeas[0].id)],
                 ['Rising member', risingMember ? `${risingMember.name} — ${risingMember.role}` : '—', () => risingMember && open.member(risingMember.id)],
                 ['Community opportunity', topOpenCluster ? `${clusterHelpersCount} members want to work on “${topOpenCluster.label}”` : '—', () => go('ideas', { ideasTab: 'clusters' })],
@@ -158,7 +166,7 @@ export default function Dashboard({ go, ask }) {
             <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.12em] text-accent"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Ask FanOS AI</p>
             <p className="mt-2 font-display text-lg font-semibold text-ink">Search your audience like a database.</p>
             <div className="mt-3 space-y-1.5">
-              {['What does my audience want me to make next?', 'Find React developers interested in AI', 'What complaints are increasing?'].map((q) => (
+              {['What does my audience want me to make next?', 'Find React developers interested in AI', 'What topics are trending?'].map((q) => (
                 <button key={q} onClick={() => ask(q)} className="flex w-full items-center justify-between rounded-xl bg-white/80 px-3 py-2 text-left text-sm text-ink-2 transition hover:bg-white hover:text-ink">
                   {q}<ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden="true" />
                 </button>

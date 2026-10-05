@@ -5,7 +5,7 @@ const outfit = Outfit({ subsets: ['latin'], variable: '--font-outfit', display: 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
 export const metadata = {
-  title: 'FanOS — The Operating System for Your Audience',
+  // The page <title> is rendered per URL by AppRoot (see lib/routes.js → titleFor).
   description: 'Turn your audience from followers into collaborators. FanOS organises communities, ideas, talent and opportunities with AI — then helps creators turn the best of them into action.',
 };
 

@@ -6,23 +6,25 @@ import {
   Gem, Trophy, Megaphone, MessageCircleQuestion, AlertTriangle, BadgeCheck, Mail, FolderKanban, ArrowRight,
 } from 'lucide-react';
 import { useStore } from '../../lib/store';
-import { buildBrief, contributionScore, draftReply, hiddenGems, risingComplaints, risingQuestions, searchPeople, fmt, hoursAgo, ago } from '../../lib/ai';
-import { CREATOR, ROLES, SCALE } from '../../lib/seed';
+import { buildBrief, contributionScore, draftReply, hiddenGems, searchPeople, fmt, hoursAgo, ago } from '../../lib/ai';
+import { CREATOR, ROLES } from '../../lib/seed';
 import { Avatar, AvatarStack, Bar, Button, Chip, Empty, SectionTitle, Sparkline, cx } from '../ui';
 import { ClusterCard, IdeaCard, PersonCard, PersonRow, memberName, useOpen } from '../shared';
 import CommunityPage from '../CommunityPage';
+import { Grad, PageHeader as SharedPageHeader } from '../chrome';
 
-function PageHeader({ eyebrow, title, sub, action, icon: Icon }) {
-  return (
-    <div className="mb-6 flex flex-col justify-between gap-4 animate-fade-up md:flex-row md:items-end">
-      <div>
-        <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.12em] text-muted">{Icon && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}{eyebrow}</p>
-        <h1 className="mt-1 font-display text-3xl font-semibold text-ink">{title}</h1>
-        {sub && <p className="mt-1 max-w-2xl text-[15px] text-ink-2">{sub}</p>}
-      </div>
-      {action}
-    </div>
-  );
+// Highlights the closing words of a string title with the animated gradient
+// ("Ideas from your audience" → "your audience"), matching the landing page.
+function accentTitle(title) {
+  if (typeof title !== 'string') return title;
+  const words = title.split(' ');
+  const n = words.length >= 3 ? 2 : 1;
+  const head = words.slice(0, -n).join(' ');
+  return <>{head && `${head} `}<Grad>{words.slice(-n).join(' ')}</Grad></>;
+}
+
+function PageHeader({ eyebrow, title, sub, action, icon }) {
+  return <SharedPageHeader eyebrow={eyebrow} icon={icon} title={accentTitle(title)} description={sub} actions={action} />;
 }
 
 // ================================================================== Brief
@@ -30,8 +32,10 @@ export function BriefPage({ go, ask }) {
   const { state, intel } = useStore();
   const open = useOpen();
   const brief = useMemo(() => buildBrief(state, intel), [state, intel]);
-  const questions = risingQuestions().slice(0, 4);
-  const complaints = risingComplaints().slice(0, 3);
+  // Real signals only: repeated requests come from idea clusters, activity from the event log.
+  const requested = intel.clusters.filter((c) => c.requests > 1).slice(0, 4);
+  const recent = state.activity.slice(0, 5);
+  const none = (text) => <p className="py-6 text-center text-sm text-muted">{text}</p>;
   const runAction = (a) => {
     if (!a) return;
     if (a.idea) open.idea(a.idea);
@@ -47,6 +51,7 @@ export function BriefPage({ go, ask }) {
       <section className="card ai-glow mb-6 p-5 sm:p-6">
         <p className="mb-4 flex items-center gap-1.5 font-display text-lg font-semibold text-ink"><Sparkles className="h-4 w-4 text-accent" aria-hidden="true" /> {brief.things.length} things you actually need to know</p>
         <ol className="grid gap-3 md:grid-cols-2">
+          {!brief.things.length && <li className="md:col-span-2">{none('Nothing needs your attention yet. Insights appear as members share ideas.')}</li>}
           {brief.things.map((t, i) => (
             <li key={i} className="flex gap-3 rounded-2xl bg-white/80 p-4">
               <span className="font-display text-sm font-semibold text-muted">{String(i + 1).padStart(2, '0')}</span>
@@ -63,16 +68,18 @@ export function BriefPage({ go, ask }) {
       <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-4">
         <section className="card p-5">
           <SectionTitle eyebrow="Trending" icon={Flame} title="Topics" />
+          {!brief.trends.length && none('No topics this week yet.')}
           {brief.trends.map((t) => (
             <div key={t.topic} className="flex items-center justify-between border-b border-line-2 py-3 last:border-0">
               <div><p className="text-sm font-medium text-ink">{t.topic}</p><Sparkline data={t.spark} width={90} height={22} /></div>
-              <p className="font-display text-lg font-semibold text-mint">↑{t.change}%</p>
+              <p className="text-right"><span className="block font-display text-lg font-semibold text-ink">{t.thisWeek}</span><span className="text-[11px] text-muted">this week</span></p>
             </div>
           ))}
         </section>
         <section className="card p-5">
           <SectionTitle eyebrow="Top ideas" icon={Lightbulb} title="By Signal Score" />
           <ol className="space-y-2">
+            {!brief.topIdeas.length && none('No open ideas yet.')}
             {brief.topIdeas.map((i, k) => (
               <li key={i.id}><button onClick={() => open.idea(i.id)} className="flex w-full gap-3 rounded-xl p-2 text-left hover:bg-paper">
                 <span className="font-display font-semibold text-muted">{k + 1}</span>
@@ -83,10 +90,12 @@ export function BriefPage({ go, ask }) {
         </section>
         <section className="card p-5">
           <SectionTitle eyebrow="People to notice" icon={Users} title="Contributors" />
+          {!brief.people.length && none('No members have joined yet.')}
           <div className="-mx-2">{brief.people.map((m) => <PersonRow key={m.id} member={m} why={`${m.role}${m.growth > 30 ? ` • +${m.growth}% this month` : ''}`} />)}</div>
         </section>
         <section className="card p-5">
           <SectionTitle eyebrow="Potential opportunities" icon={Briefcase} title={`${brief.oppTotal} real, spam removed`} />
+          {!brief.oppTotal && none('No opportunities yet.')}
           <ul className="space-y-2">
             {Object.entries(brief.oppCounts).sort((a, b) => b[1] - a[1]).map(([cat, n]) => (
               <li key={cat}><button onClick={() => go('opportunities', { oppCategory: cat })} className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-sm hover:bg-paper"><span className="text-ink-2">{cat}</span><span className="font-display font-semibold text-ink">{n}</span></button></li>
@@ -97,20 +106,22 @@ export function BriefPage({ go, ask }) {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <section className="card p-5">
-          <SectionTitle eyebrow="Asked repeatedly" icon={MessageCircleQuestion} title="Questions worth one great answer" />
-          {questions.map((q) => (
-            <div key={q.id} className="flex items-center gap-4 border-b border-line-2 py-3 last:border-0">
-              <p className="flex-1 text-sm text-ink">{q.text}</p>
-              <p className="text-right"><span className="block font-display font-semibold text-ink">{q.count}×</span><span className="text-[11px] text-muted">this week</span></p>
-            </div>
+          <SectionTitle eyebrow="Asked repeatedly" icon={MessageCircleQuestion} title="Most requested" />
+          {!requested.length && none('Nothing has been requested more than once yet.')}
+          {requested.map((c) => (
+            <button key={c.id} onClick={() => go('ideas', { ideasTab: 'clusters' })} className="flex w-full items-center gap-4 border-b border-line-2 py-3 text-left last:border-0 hover:bg-paper/60">
+              <p className="flex-1 text-sm text-ink">{c.label}</p>
+              <p className="text-right"><span className="block font-display font-semibold text-ink">{c.requests}×</span><span className="text-[11px] text-muted">requests</span></p>
+            </button>
           ))}
         </section>
         <section className="card p-5">
-          <SectionTitle eyebrow="Rising feedback" icon={AlertTriangle} title="Complaints that are growing" />
-          {complaints.map((c) => (
-            <div key={c.id} className="flex items-center gap-4 border-b border-line-2 py-3 last:border-0">
-              <p className="flex-1 text-sm text-ink">{c.text}</p>
-              <Chip tone="coral">↑{c.change}% • {c.count}</Chip>
+          <SectionTitle eyebrow="Latest" icon={AlertTriangle} title="Recent activity" />
+          {!recent.length && none('No activity yet.')}
+          {recent.map((e) => (
+            <div key={e.id} className="flex items-center gap-4 border-b border-line-2 py-3 last:border-0">
+              <p className="flex-1 text-sm text-ink">{e.text}</p>
+              <span className="shrink-0 text-[11px] text-muted">{e.at ? new Date(e.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</span>
             </div>
           ))}
         </section>
@@ -141,11 +152,11 @@ export function IdeasPage() {
   return (
     <div>
       <PageHeader icon={Lightbulb} eyebrow="Idea marketplace" title="Ideas from your audience"
-        sub={`${SCALE.ideasThisWeek} ideas this week. AI merged ${mergedCount} overlapping ideas into ${intel.clusters.length} clusters and ranked everything by Signal Score.`} />
+        sub={`${state.ideas.filter((i) => (i.daysAgo ?? 0) < 7).length} new ideas this week. AI merged ${mergedCount} overlapping ideas into ${intel.clusters.length} clusters and ranked everything by Signal Score.`} />
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div role="tablist" aria-label="Idea views" className="flex gap-1 rounded-xl bg-line-2 p-1">
+        <div role="tablist" aria-label="Idea views" className="flex gap-1 rounded-full bg-line-2 p-1">
           {[['ranked', 'Ranked', Sparkles], ['clusters', 'AI Clusters', Layers], ['featured', 'Featured', Star]].map(([id, label, Icon]) => (
-            <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cx('inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition', tab === id ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink')}>
+            <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cx('inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition', tab === id ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink')}>
               <Icon className="h-3.5 w-3.5" aria-hidden="true" />{label}
             </button>
           ))}
@@ -199,9 +210,9 @@ export function OpportunitiesPage() {
   return (
     <div>
       <PageHeader icon={Briefcase} eyebrow="Opportunities inbox" title={`${high} high-priority opportunities`}
-        sub={`Instead of ${SCALE.rawInbox.toLocaleString('en-US')} DMs, comments and emails, AI classified every message, removed spam and ranked what’s left by priority.`} />
+        sub={`${intel.opps.length.toLocaleString('en-US')} message${intel.opps.length === 1 ? '' : 's'} received. AI classified each one, removed spam and ranked what’s left by priority.`} />
       <div className="mb-5 grid grid-cols-3 gap-3 sm:max-w-xl">
-        {[[SCALE.rawInbox.toLocaleString('en-US'), 'Raw messages', 'text-muted'], [real.length, 'Real opportunities', 'text-ink'], [high, 'High priority', 'text-accent']].map(([n, l, c]) => (
+        {[[intel.opps.length.toLocaleString('en-US'), 'Messages received', 'text-muted'], [real.length, 'Real opportunities', 'text-ink'], [high, 'High priority', 'text-accent']].map(([n, l, c]) => (
           <div key={l} className="card p-3"><p className={cx('font-display text-2xl font-semibold', c)}>{n}</p><p className="text-xs text-muted">{l}</p></div>
         ))}
       </div>
@@ -214,7 +225,7 @@ export function OpportunitiesPage() {
             </button>
           ))}
           <button onClick={() => setShowSpam((v) => !v)} className="mt-3 flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-muted hover:bg-line-2" aria-expanded={showSpam}>
-            <span className="inline-flex items-center gap-1.5"><ShieldAlert className="h-4 w-4" aria-hidden="true" /> Spam filtered</span><span className="text-xs">{(SCALE.spamFiltered + spam.length).toLocaleString('en-US')}</span>
+            <span className="inline-flex items-center gap-1.5"><ShieldAlert className="h-4 w-4" aria-hidden="true" /> Spam filtered</span><span className="text-xs">{spam.length.toLocaleString('en-US')}</span>
           </button>
         </nav>
 
@@ -400,7 +411,7 @@ export function CommunitiesPage({ go }) {
           const top = [...ideas].sort((a, b) => intel.scored.get(b.id).score - intel.scored.get(a.id).score)[0];
           const contributors = [...state.members].filter((m) => m.communities.includes(c.id)).sort((a, b) => contributionScore(b) - contributionScore(a)).slice(0, 5);
           return (
-            <article key={c.id} onClick={() => dispatch({ type: 'NAV', patch: { communityId: c.id, communityTab: 'feed' } })} className="card flex cursor-pointer flex-col p-5 transition hover:-translate-y-0.5 hover:border-ink/15">
+            <article key={c.id} onClick={() => dispatch({ type: 'NAV', patch: { communityId: c.id, communityTab: 'feed' } })} className="card card-hover flex cursor-pointer flex-col p-5">
               <div className="flex items-start justify-between">
                 <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-paper text-2xl" aria-hidden="true">{c.emoji}</span>
                 {c.growth !== 0 && <Chip tone={c.growth > 0 ? 'mint' : 'coral'}>{c.growth > 0 ? '↑' : '↓'}{Math.abs(c.growth)}% this month</Chip>}
@@ -436,7 +447,7 @@ export function ProjectsPage() {
             const done = p.tasks.filter((t) => t.done).length;
             const pct = Math.round((done / Math.max(1, p.tasks.length)) * 100);
             return (
-              <button key={p.id} onClick={() => dispatch({ type: 'NAV', patch: { openProjectId: p.id } })} className="card p-5 text-left transition hover:-translate-y-0.5 hover:border-ink/15">
+              <button key={p.id} onClick={() => dispatch({ type: 'NAV', patch: { openProjectId: p.id } })} className="card card-hover p-5 text-left">
                 <div className="flex items-start justify-between gap-3">
                   <div><Chip tone={p.createdDaysAgo === 0 ? 'accent' : 'mint'}>{p.status}</Chip><h3 className="mt-2 font-display text-lg font-semibold text-ink">{p.name}</h3></div>
                   <span className="font-display text-2xl font-semibold text-ink">{pct}%</span>

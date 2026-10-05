@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useStore } from '../lib/store';
 import { contributionScore, fmt, ago } from '../lib/ai';
 import { CREATOR } from '../lib/seed';
+import { ideaStage, STAGE_LABEL, STAGES } from '../lib/reducer';
 import { Avatar, AvatarStack, Chip, ScoreRing, cx } from './ui';
 
 export function useOpen() {
@@ -30,11 +31,33 @@ export function memberName(state, id) {
   return state.members.find((m) => m.id === id)?.name || 'Member';
 }
 
+const STAGE_TONE = { submitted: 'default', discussing: 'sky', selected: 'accent', in_progress: 'amber', completed: 'mint', archived: 'outline' };
+
+export function StageChip({ stage }) {
+  return <Chip tone={STAGE_TONE[stage]} icon={stage === 'in_progress' ? Rocket : undefined}>{STAGE_LABEL[stage]}</Chip>;
+}
+
+// Submitted → Discussing → Selected → In progress → Completed, with the current step highlighted.
+export function StageTrack({ stage }) {
+  const at = STAGES.indexOf(stage);
+  return (
+    <ol className="flex items-center gap-1" aria-label={`Stage: ${STAGE_LABEL[stage]}`}>
+      {STAGES.map((st, i) => (
+        <li key={st} className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className={cx('h-1.5 rounded-full transition-colors', at < 0 ? 'bg-line' : i < at ? 'bg-accent/60' : i === at ? 'bg-gradient-to-r from-accent to-coral' : 'bg-line-2')} />
+          <span className={cx('truncate text-[10px] font-medium', i === at ? 'text-ink' : 'text-muted')} aria-current={i === at ? 'step' : undefined}>{STAGE_LABEL[st]}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export function IdeaStatus({ idea }) {
+  const { state } = useStore();
   return (
     <>
+      <StageChip stage={ideaStage(idea, state.projects)} />
       {idea.featured && <Chip tone="amber" icon={Star}>Featured by {CREATOR.firstName}</Chip>}
-      {idea.status === 'project' && <Chip tone="mint" icon={Rocket}>Project</Chip>}
     </>
   );
 }
@@ -53,7 +76,7 @@ export function IdeaCard({ idea, mode = 'creator', compact = false, rank }) {
   return (
     <article
       onClick={() => open.idea(idea.id)}
-      className={cx('card group cursor-pointer p-4 transition hover:-translate-y-0.5 hover:border-ink/15 hover:shadow-lg', compact ? '' : 'sm:p-5')}
+      className={cx('card card-hover group cursor-pointer p-4', compact ? '' : 'sm:p-5')}
     >
       <div className="flex gap-4">
         {mode === 'creator' && sig && (
@@ -140,14 +163,14 @@ export function PersonCard({ member, why = [], action }) {
   const open = useOpen();
   const score = contributionScore(member);
   return (
-    <div className="card flex flex-col p-4 transition hover:border-ink/15">
+    <div className="card card-hover group flex flex-col p-4">
       <button onClick={() => open.member(member.id)} className="flex items-center gap-3 text-left">
         <Avatar name={member.name} size={44} />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold text-ink">{member.name}</p>
+          <p className="truncate font-semibold text-ink group-hover:text-accent">{member.name}</p>
           <p className="truncate text-xs text-muted">{member.role} • {member.city}</p>
         </div>
-        <div className="rounded-xl bg-accent-soft px-2.5 py-1.5 text-center">
+        <div className="rounded-xl bg-accent-soft px-2.5 py-1.5 text-center transition group-hover:scale-105">
           <p className="font-display text-sm font-bold leading-none text-accent">{score}</p>
           <p className="mt-0.5 text-[9px] font-medium uppercase tracking-wide text-accent/80">score</p>
         </div>
@@ -185,7 +208,7 @@ export function ClusterCard({ cluster, defaultOpen = false }) {
   const isCreator = state.view === 'creator';
   const selected = top.featured || top.status === 'project';
   return (
-    <div className="card overflow-hidden">
+    <div className={cx('card overflow-hidden transition', !expanded && 'card-hover')}>
       <div className="p-5">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
@@ -204,9 +227,9 @@ export function ClusterCard({ cluster, defaultOpen = false }) {
         <p className="rounded-xl bg-paper p-3 text-sm leading-relaxed text-ink-2"><span className="font-semibold text-ink">AI summary: </span>{cluster.summary}</p>
         {isCreator && (
           <ol className="mt-4 grid grid-cols-3 gap-2" aria-label="Turn this request into action">
-            <li><button onClick={() => { if (!top.featured) dispatch({ type: 'FEATURE', ideaId: top.id }); open.idea(top.id); }} className={cx('w-full rounded-xl border px-2 py-2 text-xs font-semibold transition', selected ? 'border-mint/40 bg-mint-soft text-mint' : 'border-line bg-white text-ink hover:border-accent/40')}>{selected ? '✓ Selected' : '1 · Select idea'}</button></li>
-            <li><button onClick={() => (top.status === 'project' ? dispatch({ type: 'NAV', patch: { creatorPage: 'projects', openProjectId: top.projectId || state.projects.find((p) => p.ideaId === top.id)?.id } }) : open.project(top.id))} className={cx('w-full rounded-xl border px-2 py-2 text-xs font-semibold transition', top.status === 'project' ? 'border-mint/40 bg-mint-soft text-mint' : 'border-accent bg-accent text-white hover:bg-accent-600')}>{top.status === 'project' ? '✓ Collaboration' : '2 · Create collaboration'}</button></li>
-            <li><button onClick={() => open.promote(top.id)} className="w-full rounded-xl border border-line bg-white px-2 py-2 text-xs font-semibold text-ink transition hover:border-accent/40">3 · Promote</button></li>
+            <li><button onClick={() => { if (!top.featured) dispatch({ type: 'FEATURE', ideaId: top.id }); open.idea(top.id); }} className={cx('w-full whitespace-nowrap rounded-full border px-2 py-2 text-xs font-semibold transition', selected ? 'border-mint/40 bg-mint-soft text-mint' : 'border-line bg-white text-ink hover:border-accent/40')}>{selected ? '✓ Selected' : '1 · Select idea'}</button></li>
+            <li><button onClick={() => (top.status === 'project' ? dispatch({ type: 'NAV', patch: { creatorPage: 'projects', openProjectId: top.projectId || state.projects.find((p) => p.ideaId === top.id)?.id } }) : open.project(top.id))} className={cx('w-full whitespace-nowrap rounded-full border px-2 py-2 text-xs font-semibold transition', top.status === 'project' ? 'border-mint/40 bg-mint-soft text-mint' : 'border-accent bg-accent text-white hover:bg-accent-600')}>{top.status === 'project' ? '✓ Collaboration' : '2 · Collaborate'}</button></li>
+            <li><button onClick={() => open.promote(top.id)} className="w-full whitespace-nowrap rounded-full border border-line bg-white px-2 py-2 text-xs font-semibold text-ink transition hover:border-accent/40">3 · Promote</button></li>
           </ol>
         )}
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">

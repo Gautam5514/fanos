@@ -3,8 +3,9 @@
 import { useMemo, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, Sparkles } from 'lucide-react';
 import { useStore } from '../../lib/store';
-import { CREATOR, GOALS, INTERESTS, ROLES, ROLE_SKILLS, SCALE, communitiesForProfile } from '../../lib/seed';
-import { Avatar, Button, Logo, cx } from '../ui';
+import { CREATOR, GOALS, INTERESTS, ROLES, ROLE_SKILLS, communitiesForProfile } from '../../lib/seed';
+import { Avatar, Button, cx } from '../ui';
+import { PanelSteps, SplitShell } from '../chrome';
 
 const INTEREST_EMOJI = { AI: '🤖', Startups: '🚀', Marketing: '📈', Design: '🎨', Fitness: '💪', Finance: '💰', 'Content Creation': '🎥', Automation: '⚡', Productivity: '🗂️' };
 const ROLE_EMOJI = { Developer: '👨‍💻', Designer: '🎨', Founder: '🚀', 'Video Editor': '🎬', Writer: '✍️', Investor: '💰', Student: '🎓', Marketer: '📢', Other: '✨' };
@@ -17,8 +18,8 @@ function Pick({ options, emoji, value, onToggle, multi = true }) {
         const on = multi ? value.includes(o) : value === o;
         return (
           <button key={o} type="button" aria-pressed={on} onClick={() => onToggle(o)}
-            className={cx('flex items-center gap-2.5 rounded-2xl border px-4 py-3.5 text-left text-sm font-medium transition active:scale-[.98]', on ? 'border-accent bg-accent-soft text-ink ring-4 ring-accent/10' : 'border-line bg-white text-ink-2 hover:border-ink/25')}>
-            <span className="text-xl" aria-hidden="true">{emoji[o]}</span>
+            className={cx('group flex items-center gap-3 rounded-2xl border px-3 py-3 text-left text-sm font-medium transition duration-200 active:scale-[.98]', on ? 'border-accent bg-accent-soft text-ink shadow-[0_8px_24px_-12px_rgba(91,61,245,.5)] ring-4 ring-accent/10' : 'border-line bg-white text-ink-2 hover:-translate-y-0.5 hover:border-ink/20 hover:shadow-card')}>
+            <span className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-lg transition group-hover:scale-110', on ? 'bg-white' : 'bg-line-2')} aria-hidden="true">{emoji[o]}</span>
             <span className="flex-1">{o}</span>
             {on && <Check className="h-4 w-4 text-accent" aria-hidden="true" />}
           </button>
@@ -30,7 +31,7 @@ function Pick({ options, emoji, value, onToggle, multi = true }) {
 
 export default function Onboarding() {
   const { state, dispatch } = useStore();
-  const live = state.mode === 'live';
+  const live = !!state.user; // onboarding only runs for a signed-in member
   // Live: the account already exists, so start at "interests" with the account name.
   const [step, setStep] = useState(live ? 1 : 0);
   const [name, setName] = useState(state.user?.name || '');
@@ -40,48 +41,75 @@ export default function Onboarding() {
   const [goals, setGoals] = useState([]);
   const [joined, setJoined] = useState(null);
   const toggle = (set) => (v) => set((arr) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]));
-  const matched = useMemo(() => communitiesForProfile(interests, role), [interests, role]);
+  const matched = useMemo(() => communitiesForProfile(interests, role, state.communities), [interests, role, state.communities]);
+  const noCommunities = state.communities.length === 0;
   const communities = joined ?? matched;
   const steps = ['Join', 'Interests', 'Contribute', 'Goals', 'Communities'];
-  const canNext = [name.trim().length >= 2, interests.length > 0 && name.trim().length >= 2, !!role, goals.length > 0, communities.length > 0][step];
+  const canNext = [name.trim().length >= 2, interests.length > 0 && name.trim().length >= 2, !!role, goals.length > 0, communities.length > 0 || noCommunities][step];
 
-  const finish = () => dispatch({ type: 'ONBOARD', ...(live && state.user ? { memberId: `m_u_${state.user.id}` } : {}), profile: { name: name.trim().slice(0, 40), interests, role, skills, goals }, communities });
+  const finish = () => dispatch({ type: 'ONBOARD', ...(state.user ? { memberId: `m_u_${state.user.id}` } : {}), profile: { name: name.trim().slice(0, 40), interests, role, skills, goals }, communities });
+
+  const firstName = name.trim().split(' ')[0];
+  const memberCard = (
+    <div className="rounded-3xl border border-white/15 bg-white/[.07] p-5 backdrop-blur-xl">
+      <div className="flex items-center gap-3">
+        <Avatar name={name.trim() || 'You'} size={44} />
+        <div className="min-w-0">
+          <p className="truncate font-display text-lg font-semibold text-white">{name.trim() || 'Your name'}</p>
+          <p className="text-xs text-white/60">{role ? `${ROLE_EMOJI[role]} ${role}` : 'Member'} · {CREATOR.firstName}’s community</p>
+        </div>
+      </div>
+      {(skills.length > 0 || interests.length > 0) && (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {skills.map((x) => <span key={x} className="rounded-full bg-gradient-to-r from-accent to-coral px-2.5 py-0.5 text-[11px] font-medium text-white">{x}</span>)}
+          {interests.map((x) => <span key={x} className="rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] text-white/80">{INTEREST_EMOJI[x] || '•'} {x}</span>)}
+        </div>
+      )}
+      {goals.length > 0 && <p className="mt-3 text-xs text-white/60">Here to: {goals.join(' · ')}</p>}
+      {step === 4 && <p className="mt-3 text-xs font-medium text-white/80">Joining {communities.length} communit{communities.length === 1 ? 'y' : 'ies'}</p>}
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-paper">
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
-        <Logo />
-        {live ? <span className="text-sm text-muted">Signed in as {state.user?.email}</span> : <button onClick={() => dispatch({ type: 'NAV', patch: { view: 'landing' } })} className="text-sm text-muted hover:text-ink">Exit</button>}
-      </header>
-      <main className="mx-auto max-w-2xl px-6 pb-16 pt-4">
-        <ol className="mb-8 flex gap-1.5" aria-label="Progress">
-          {steps.map((s, i) => <li key={s} className={cx('h-1.5 flex-1 rounded-full transition-colors', i <= step ? 'bg-accent' : 'bg-line')} aria-current={i === step ? 'step' : undefined}><span className="sr-only">{s}</span></li>)}
-        </ol>
+    <SplitShell
+      wide
+      eyebrow={`Step ${step + 1} of ${steps.length}`}
+      panelTitle={<>Become more than <span className="ai-gradient-animated">a follower.</span></>}
+      panel={<div className="space-y-6"><PanelSteps steps={steps} current={step} />{memberCard}</div>}
+      panelFooter={state.members.length ? `${state.members.length.toLocaleString('en-US')} member${state.members.length === 1 ? ' has' : 's have'} already joined` : 'Be one of the first members to join'}
+      topRight={live ? <span>Signed in as {state.user?.email}</span> : <button onClick={() => dispatch({ type: 'NAV', patch: { view: 'landing' } })} className="transition hover:text-ink">Exit</button>}
+    >
+      <div>
+        <div className="mb-8 lg:hidden">
+          <ol className="flex gap-1.5" aria-label="Progress">
+            {steps.map((s, i) => <li key={s} className={cx('h-1.5 flex-1 rounded-full transition-colors', i <= step ? 'bg-gradient-to-r from-accent to-coral' : 'bg-line')} aria-current={i === step ? 'step' : undefined}><span className="sr-only">{s}</span></li>)}
+          </ol>
+          <p className="mt-2 text-xs text-muted">Step {step + 1} of {steps.length} · {steps[step]}</p>
+        </div>
 
         <div key={step} className="animate-fade-up">
           {step === 0 && (
             <>
               <div className="flex items-center gap-3"><Avatar name={CREATOR.name} size={48} /><div><p className="text-sm text-muted">You’re invited by</p><p className="font-semibold text-ink">{CREATOR.name} <span className="font-normal text-muted">{CREATOR.handle}</span></p></div></div>
-              <h1 className="mt-6 font-display text-4xl font-semibold text-ink">Join {CREATOR.firstName}’s community</h1>
-              <p className="mt-2 text-ink-2">{SCALE.members.toLocaleString('en-US')} members are sharing ideas, building projects and finding collaborators. Become more than a follower.</p>
+              <h1 className="mt-6 font-display text-4xl font-semibold text-ink sm:text-5xl">Join <span className="ai-gradient-animated">{CREATOR.firstName}’s</span> community</h1>
+              <p className="mt-2 text-ink-2">Share ideas, build projects and find collaborators. Become more than a follower.</p>
               <label htmlFor="ob-name" className="mt-8 block text-sm font-medium text-ink">Your name</label>
               <input id="ob-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} autoComplete="name" placeholder="e.g. Aditi Rao" className="mt-1.5 h-12 w-full rounded-2xl border border-line bg-white px-4 text-[15px] outline-none focus:border-accent focus:ring-4 focus:ring-accent/10" />
               <div className="mt-4">
                 <Button variant="primary" size="lg" className="w-full" disabled={!canNext} onClick={() => setStep(1)}>Continue</Button>
               </div>
-              <p className="mt-3 text-xs text-muted">Demo mode — this profile stays in your browser. <button type="button" onClick={() => dispatch({ type: 'NAV', patch: { view: 'auth', authTab: 'signup', authRole: 'member' } })} className="font-medium text-accent hover:underline">Create a real account instead</button></p>
             </>
           )}
           {step === 1 && (
             <>
-              <h1 className="font-display text-3xl font-semibold text-ink">What are you interested in?</h1>
+              <h1 className="font-display text-3xl font-semibold text-ink sm:text-4xl">What are you <span className="ai-gradient-animated">into</span>{firstName ? `, ${firstName}` : ''}?</h1>
               <p className="mb-6 mt-2 text-ink-2">Pick as many as you like. We’ll match you to the right communities.</p>
               <Pick options={INTERESTS} emoji={INTEREST_EMOJI} value={interests} onToggle={toggle(setInterests)} />
             </>
           )}
           {step === 2 && (
             <>
-              <h1 className="font-display text-3xl font-semibold text-ink">What can you contribute?</h1>
+              <h1 className="font-display text-3xl font-semibold text-ink sm:text-4xl">What can you <span className="ai-gradient-animated">contribute?</span></h1>
               <p className="mb-6 mt-2 text-ink-2">{CREATOR.firstName} and other members can find you by your skills — not your follower count.</p>
               <Pick options={ROLES} emoji={ROLE_EMOJI} value={role} multi={false} onToggle={(r) => { setRole(r); setSkills([]); }} />
               {role && ROLE_SKILLS[role] && (
@@ -99,7 +127,7 @@ export default function Onboarding() {
           )}
           {step === 3 && (
             <>
-              <h1 className="font-display text-3xl font-semibold text-ink">Why are you here?</h1>
+              <h1 className="font-display text-3xl font-semibold text-ink sm:text-4xl">Why are you <span className="ai-gradient-animated">here?</span></h1>
               <p className="mb-6 mt-2 text-ink-2">This helps us show you the right ideas and people.</p>
               <Pick options={GOALS} emoji={GOAL_EMOJI} value={goals} onToggle={toggle(setGoals)} />
             </>
@@ -107,8 +135,8 @@ export default function Onboarding() {
           {step === 4 && (
             <>
               <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.12em] text-accent"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> AI matched</p>
-              <h1 className="mt-1 font-display text-3xl font-semibold text-ink">Your communities</h1>
-              <p className="mb-6 mt-2 text-ink-2">Based on your interests and skills, we picked {matched.length} communities. Adjust anytime.</p>
+              <h1 className="mt-1 font-display text-3xl font-semibold text-ink sm:text-4xl">Your <span className="ai-gradient-animated">communities</span></h1>
+              <p className="mb-6 mt-2 text-ink-2">{noCommunities ? `${CREATOR.firstName === 'your creator' ? 'Your creator' : CREATOR.firstName} has not created any communities yet. You can join them later from the Communities page.` : `Based on your interests and skills, we picked ${matched.length} communit${matched.length === 1 ? 'y' : 'ies'}. Adjust anytime.`}</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {state.communities.map((c) => {
                   const on = communities.includes(c.id);
@@ -140,7 +168,7 @@ export default function Onboarding() {
               : <Button variant="accent" size="lg" icon={Sparkles} disabled={!canNext} onClick={finish}>Enter the community</Button>}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </SplitShell>
   );
 }

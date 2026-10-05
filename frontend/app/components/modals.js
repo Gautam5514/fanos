@@ -233,10 +233,6 @@ const PIPELINE = [
   [Gauge, 'Signal scoring'],
   [UserCheck, 'Contributor analysis'],
 ];
-const CATEGORY_TAGS = {
-  'ai-builders': ['AI Tools'], developers: ['Building'], marketing: ['Marketing'], founders: ['Startups'],
-  creators: ['Content Creation'], finance: ['Finance'], fitness: ['Fitness'], designers: ['Design'],
-};
 const KEYWORD_TAGS = [[/agent/i, 'AI Agents'], [/automat/i, 'Automation'], [/course|tutorial|teach|learn|workshop/i, 'Education'], [/live|stream/i, 'Live'], [/challenge|30.day|sprint/i, 'Challenge'], [/directory|database/i, 'Directory'], [/monet|brand deal|sponsor/i, 'Monetization']];
 
 function ShareIdeaModal({ prefill, onClose }) {
@@ -246,18 +242,21 @@ function ShareIdeaModal({ prefill, onClose }) {
   const me = state.members.find((m) => m.id === state.meId);
   const [title, setTitle] = useState(prefill?.title || '');
   const [desc, setDesc] = useState(prefill?.description || '');
-  const [communityId, setCommunityId] = useState(prefill?.communityId || me?.communities?.[0] || 'ai-builders');
-  const [category, setCategory] = useState(categoryForCommunity(prefill?.communityId || me?.communities?.[0] || 'ai-builders'));
+  const findCommunity = (id) => state.communities.find((c) => c.id === id);
+  const [communityId, setCommunityId] = useState(prefill?.communityId || me?.communities?.[0] || state.communities[0]?.id || '');
+  const [category, setCategory] = useState(() => categoryForCommunity(findCommunity(prefill?.communityId || me?.communities?.[0] || state.communities[0]?.id)));
   const [needs, setNeeds] = useState(['Developer']);
   const [phase, setPhase] = useState('form'); // form | pipeline | done
   const [step, setStep] = useState(0);
   const [submittedTitle, setSubmittedTitle] = useState(null);
 
   const tags = useMemo(() => {
-    const t = new Set(CATEGORY_TAGS[communityId] || []);
+    // Base tag: the community's real name; keyword tags are added below.
+    const community = state.communities.find((c) => c.id === communityId);
+    const t = new Set(community ? [community.name] : []);
     KEYWORD_TAGS.forEach(([re, tag]) => re.test(`${title} ${desc}`) && t.add(tag));
     return [...t];
-  }, [title, desc, communityId]);
+  }, [title, desc, communityId, state.communities]);
   const similar = useMemo(() => findSimilar(`${title} ${desc}`, tags, state.ideas.filter((i) => i.status !== 'archived'), 3), [title, desc, tags, state.ideas]);
   const mod = useMemo(() => moderate(`${title} ${desc}`), [title, desc]);
   const tips = [];
@@ -298,7 +297,7 @@ function ShareIdeaModal({ prefill, onClose }) {
             <textarea id="idea-d" value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={2000} rows={4} placeholder="Who does it help, what problem does it solve, what would a first version look like?" className="mt-1.5 w-full resize-none rounded-xl border border-line px-3.5 py-2.5 text-[15px] outline-none focus:border-accent" />
 
             <label htmlFor="idea-c" className="mt-4 block text-sm font-medium text-ink">Community</label>
-            <select id="idea-c" value={communityId} onChange={(e) => { setCommunityId(e.target.value); setCategory(categoryForCommunity(e.target.value)); }} className="mt-1.5 h-11 w-full rounded-xl border border-line bg-white px-3 text-sm outline-none focus:border-accent">
+            <select id="idea-c" value={communityId} onChange={(e) => { setCommunityId(e.target.value); setCategory(categoryForCommunity(findCommunity(e.target.value))); }} className="mt-1.5 h-11 w-full rounded-xl border border-line bg-white px-3 text-sm outline-none focus:border-accent">
               {state.communities.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
             </select>
 
@@ -457,10 +456,10 @@ function PromoteModal({ id, onClose }) {
         <p className="mt-1 text-sm text-muted">AI drafts posts for every channel using real community data: {idea.supports.toLocaleString('en-US')} supporters, {idea.volunteers.length} volunteers.</p>
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-          <div role="tablist" aria-label="Platform" className="flex gap-1 rounded-xl bg-line-2 p-1">
+          <div role="tablist" aria-label="Platform" className="flex gap-1 rounded-full bg-line-2 p-1">
             {PLATFORMS.map((p) => (
               <button key={p} role="tab" aria-selected={platform === p} onClick={() => regenerate({ platform: p })}
-                className={cx('rounded-lg px-3 py-1.5 text-sm font-medium transition', platform === p ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink')}>{p === 'Announcement' ? 'Community' : p}</button>
+                className={cx('rounded-full px-3 py-1.5 text-sm font-medium transition', platform === p ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink')}>{p === 'Announcement' ? 'Community' : p}</button>
             ))}
           </div>
           <div className="flex items-center gap-2">
@@ -469,7 +468,7 @@ function PromoteModal({ id, onClose }) {
               {['Excited', 'Professional', 'Casual'].map((t) => <option key={t}>{t}</option>)}
             </select>
             <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => regenerate({ variant: variant + 1 })}>Regenerate</Button>
-            {state.aiEnabled && state.mode === 'live' && <Button size="sm" variant="soft" icon={Sparkles} disabled={generating} onClick={rewriteWithAI}>Rewrite with AI</Button>}
+            {state.aiEnabled && <Button size="sm" variant="soft" icon={Sparkles} disabled={generating} onClick={rewriteWithAI}>Rewrite with AI</Button>}
           </div>
         </div>
 

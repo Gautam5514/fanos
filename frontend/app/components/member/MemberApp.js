@@ -1,11 +1,13 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Lightbulb, Flame, Handshake, Rocket, Users, Star, Megaphone, ArrowRightLeft, Plus, Check, Trophy, Bookmark, Sparkles, Home, Boxes, FolderKanban, Heart, MessageCircle, LogOut, Mail, X } from 'lucide-react';
+import { Lightbulb, Flame, Handshake, Rocket, Users, Star, Megaphone, Plus, Check, Trophy, Bookmark, Sparkles, Home, Boxes, FolderKanban, Heart, MessageCircle, LogOut, Mail, X, UserRound } from 'lucide-react';
 import { useStore } from '../../lib/store';
 import { contributionScore, roleMatchesNeed, ago } from '../../lib/ai';
 import { CREATOR } from '../../lib/seed';
 import { Avatar, AvatarStack, Bar, Button, Chip, Empty, Logo, SectionTitle, cx } from '../ui';
+import { Aurora, Grad, PageHeader } from '../chrome';
+import ProfileMenu from '../ProfileMenu';
 import { IdeaCard, PersonCard, memberName, useOpen } from '../shared';
 import { ProjectDetail } from '../creator/Pages';
 import CommunityPage from '../CommunityPage';
@@ -17,30 +19,39 @@ export default function MemberApp() {
   const open = useOpen();
   const me = state.members.find((m) => m.id === state.meId);
   const page = state.memberPage;
-  const live = state.mode === 'live';
   const go = (p, extra = {}) => { dispatch({ type: 'NAV', patch: { memberPage: p, ...(p === 'communities' ? { communityId: null } : {}), ...(p === 'projects' && !('memberProjectId' in extra) ? { memberProjectId: null } : {}), ...extra } }); window.scrollTo({ top: 0 }); };
   if (!me) return null;
 
   return (
-    <div className="min-h-screen pb-20 md:pb-0">
-      <header className="sticky top-0 z-20 border-b border-line bg-white/85 backdrop-blur-md">
+    <div className="relative min-h-screen pb-20 md:pb-0">
+      <Aurora className="h-[560px]" />
+      <header className="glass sticky top-0 z-20 border-b border-line/70">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
           <Logo />
           <span className="hidden text-sm text-muted lg:inline">× {CREATOR.name}’s community</span>
-          <nav aria-label="Member navigation" className="mx-auto hidden gap-1 md:flex">
+          <nav aria-label="Member navigation" className="mx-auto hidden gap-0.5 rounded-full bg-white/70 p-1 ring-1 ring-line backdrop-blur md:flex">
             {TABS.map(([id, label]) => (
-              <button key={id} onClick={() => go(id)} aria-current={page === id ? 'page' : undefined} className={cx('rounded-xl px-3 py-2 text-sm font-medium transition', page === id ? 'bg-ink text-white' : 'text-ink-2 hover:bg-line-2')}>{label}</button>
+              <button key={id} onClick={() => go(id)} aria-current={page === id ? 'page' : undefined} className={cx('rounded-full px-4 py-1.5 text-sm font-medium transition', page === id ? 'bg-ink text-white shadow-sm' : 'text-ink-2 hover:bg-line-2 hover:text-ink')}>{label}</button>
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-2 md:ml-0">
             <Button variant="accent" size="sm" icon={Plus} onClick={() => open.share()}>Share an Idea</Button>
-            <button onClick={() => go('profile')} aria-label="Your profile" className="rounded-full ring-offset-2 transition hover:ring-2 hover:ring-accent/40"><Avatar name={me.name} size={34} /></button>
-            {live && <button onClick={() => auth.logout()} aria-label="Log out" title="Log out" className="rounded-lg p-2 text-muted hover:bg-line-2 hover:text-ink"><LogOut className="h-4 w-4" aria-hidden="true" /></button>}
+            <ProfileMenu
+              name={me.name}
+              email={state.user?.email}
+              sections={[
+                [
+                  { icon: UserRound, label: 'My profile', onClick: () => go('profile') },
+                  { icon: Boxes, label: 'My communities', onClick: () => go('communities') },
+                ],
+                [{ icon: LogOut, label: 'Log out', onClick: () => auth.logout() }],
+              ]}
+            />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+      <main className="relative mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         {page === 'home' && <MemberHome me={me} go={go} />}
         {page === 'ideas' && <MemberIdeas me={me} />}
         {page === 'communities' && (state.communityId
@@ -51,16 +62,11 @@ export default function MemberApp() {
         {page === 'profile' && <MemberProfile me={me} />}
       </main>
 
-      {!live && (
-        <button onClick={() => dispatch({ type: 'NAV', patch: { view: 'creator' } })} className="fixed bottom-20 right-4 z-30 inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-xs font-medium text-white shadow-pop transition hover:bg-ink/90 md:bottom-6">
-          <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" /> Creator view (demo)
-        </button>
-      )}
 
-      <nav aria-label="Member navigation" className="fixed inset-x-0 bottom-0 z-20 flex border-t border-line bg-white md:hidden">
+      <nav aria-label="Member navigation" className="glass fixed inset-x-0 bottom-0 z-20 flex border-t border-line/70 px-2 pb-[env(safe-area-inset-bottom)] md:hidden">
         {TABS.map(([id, label, Icon]) => (
-          <button key={id} onClick={() => go(id)} aria-current={page === id ? 'page' : undefined} className={cx('flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium', page === id ? 'text-accent' : 'text-muted')}>
-            <Icon className="h-5 w-5" aria-hidden="true" />{label}
+          <button key={id} onClick={() => go(id)} aria-current={page === id ? 'page' : undefined} className={cx('flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium', page === id ? 'text-accent' : 'text-muted')}>
+            <span className={cx('flex h-7 w-12 items-center justify-center rounded-full transition', page === id && 'bg-accent-soft')}><Icon className="h-5 w-5" aria-hidden="true" /></span>{label}
           </button>
         ))}
       </nav>
@@ -84,9 +90,9 @@ function MemberHome({ me, go }) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-12">
-      <div className="space-y-6 lg:col-span-8">
+      <div className="min-w-0 space-y-6 lg:col-span-8">
         <section className="animate-fade-up">
-          <h1 className="font-display text-3xl font-semibold text-ink">Welcome back, {me.name.split(' ')[0]} 👋</h1>
+          <h1 className="font-display text-3xl font-semibold text-ink sm:text-[34px]">Welcome back, <Grad>{me.name.split(' ')[0]}</Grad> 👋</h1>
           <p className="mt-1 text-ink-2">Here’s what’s happening in {CREATOR.firstName}’s community.</p>
         </section>
 
@@ -122,7 +128,7 @@ function MemberHome({ me, go }) {
 
         <nav aria-label="Explore" className="no-scrollbar flex gap-2 overflow-x-auto">
           {[['🔥 Trending', () => go('ideas', { memberIdeasTab: 'trending' })], ['💡 Ideas', () => go('ideas', { memberIdeasTab: 'new' })], ['🤝 Collaborations', () => go('ideas', { memberIdeasTab: 'skills' })], ['🚀 Projects', () => go('projects')], ['👥 People', () => go('people')]].map(([l, fn]) => (
-            <button key={l} onClick={fn} className="shrink-0 rounded-2xl border border-line bg-white px-4 py-2.5 text-sm font-medium text-ink transition hover:border-ink/20 hover:shadow-sm">{l}</button>
+            <button key={l} onClick={fn} className="shrink-0 rounded-full border border-line bg-white px-4 py-2.5 text-sm font-medium text-ink transition hover:border-ink/20 hover:shadow-sm">{l}</button>
           ))}
         </nav>
 
@@ -145,7 +151,7 @@ function MemberHome({ me, go }) {
         {trending && (
           <section>
             <SectionTitle eyebrow="Trending idea" icon={Flame} title="Most supported this week" />
-            <button onClick={() => open.idea(trending.id)} className="card w-full overflow-hidden text-left transition hover:-translate-y-0.5 hover:border-ink/15">
+            <button onClick={() => open.idea(trending.id)} className="card card-hover w-full overflow-hidden text-left">
               <div className="bg-gradient-to-br from-accent to-[#9b4bf0] p-6 text-white">
                 <Chip className="bg-white/20 text-white">🔥 #1 trending</Chip>
                 <h3 className="mt-3 font-display text-2xl font-semibold">{trending.title}</h3>
@@ -167,7 +173,7 @@ function MemberHome({ me, go }) {
         </section>
       </div>
 
-      <aside className="space-y-6 lg:col-span-4">
+      <aside className="min-w-0 space-y-6 lg:col-span-4">
         <section className="ai-border ai-glow rounded-[18px] p-5">
           <p className="flex items-center gap-1.5 text-xs font-semibold text-accent"><Trophy className="h-3.5 w-3.5" aria-hidden="true" /> Your Contribution Score</p>
           <p className="mt-1 font-display text-4xl font-bold text-ink">{score}</p>
@@ -213,12 +219,11 @@ function MemberIdeas({ me }) {
   const set = (patch) => dispatch({ type: 'NAV', patch });
   return (
     <div>
-      <h1 className="font-display text-3xl font-semibold text-ink">Ideas</h1>
-      <p className="mt-1 text-ink-2">Support what you want to see, offer help where you can.</p>
+      <PageHeader icon={Lightbulb} eyebrow="Idea board" title={<>Community <Grad>ideas</Grad></>} description="Support what you want to see, offer help where you can." className="mb-2" />
       <div className="my-5 flex flex-wrap items-center gap-3">
-        <div role="tablist" className="no-scrollbar flex gap-1 overflow-x-auto rounded-xl bg-line-2 p-1">
+        <div role="tablist" className="no-scrollbar flex gap-1 overflow-x-auto rounded-full bg-line-2 p-1">
           {[['trending', '🔥 Trending'], ['new', '🆕 New'], ['skills', `🤝 Needs a ${me.role.toLowerCase()}`], ['saved', '🔖 Saved'], ['mine', '✨ Mine']].map(([id, l]) => (
-            <button key={id} role="tab" aria-selected={tab === id} onClick={() => set({ memberIdeasTab: id })} className={cx('shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition', tab === id ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink')}>{l}</button>
+            <button key={id} role="tab" aria-selected={tab === id} onClick={() => set({ memberIdeasTab: id })} className={cx('shrink-0 rounded-full px-3 py-1.5 text-sm font-medium transition', tab === id ? 'bg-white text-ink shadow-sm' : 'text-muted hover:text-ink')}>{l}</button>
           ))}
         </div>
         <label htmlFor="m-comm" className="sr-only">Community</label>
@@ -237,8 +242,7 @@ function MemberCommunities({ me }) {
   const { state, dispatch } = useStore();
   return (
     <div>
-      <h1 className="font-display text-3xl font-semibold text-ink">Communities</h1>
-      <p className="mt-1 text-ink-2">Join the spaces that match what you care about and what you can contribute.</p>
+      <PageHeader icon={Boxes} eyebrow="Spaces" title={<>Your <Grad>communities</Grad></>} description="Join the spaces that match what you care about and what you can contribute." className="mb-2" />
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {state.communities.map((c) => {
           const joined = me.communities.includes(c.id);
@@ -265,13 +269,12 @@ function MemberProjects() {
   if (p) return <ProjectDetail project={p} memberMode onBack={() => dispatch({ type: 'NAV', patch: { memberProjectId: null } })} />;
   return (
     <div>
-      <h1 className="font-display text-3xl font-semibold text-ink">Projects</h1>
-      <p className="mt-1 text-ink-2">Community ideas that {CREATOR.firstName} turned into real projects.</p>
+      <PageHeader icon={FolderKanban} eyebrow="Idea → action" title={<>Community <Grad>projects</Grad></>} description={`Community ideas that ${CREATOR.firstName} turned into real projects.`} className="mb-2" />
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         {state.projects.map((pr) => {
           const pct = Math.round((pr.tasks.filter((t) => t.done).length / Math.max(1, pr.tasks.length)) * 100);
           return (
-            <button key={pr.id} onClick={() => dispatch({ type: 'NAV', patch: { memberProjectId: pr.id } })} className="card p-5 text-left transition hover:-translate-y-0.5 hover:border-ink/15">
+            <button key={pr.id} onClick={() => dispatch({ type: 'NAV', patch: { memberProjectId: pr.id } })} className="card card-hover p-5 text-left">
               <Chip tone="mint" icon={Rocket}>{pr.status}</Chip>
               <h2 className="mt-2 font-display text-lg font-semibold text-ink">{pr.name}</h2>
               <p className="mt-1 line-clamp-2 text-sm text-ink-2">{pr.description}</p>
@@ -288,11 +291,10 @@ function MemberProjects() {
 function MemberPeople() {
   const { state } = useStore();
   const [role, setRole] = useState('All');
-  const people = [...state.members].filter((m) => !m.isMe && (role === 'All' || m.role === role)).sort((a, b) => contributionScore(b) - contributionScore(a)).slice(0, 18);
+  const people = [...state.members].filter((m) => m.id !== state.meId && (role === 'All' || m.role === role)).sort((a, b) => contributionScore(b) - contributionScore(a)).slice(0, 18);
   return (
     <div>
-      <h1 className="font-display text-3xl font-semibold text-ink">People</h1>
-      <p className="mt-1 text-ink-2">Top contributors in the community — find collaborators for your ideas.</p>
+      <PageHeader icon={Users} eyebrow="Collaborators" title={<>Find your <Grad>people</Grad></>} description="Top contributors in the community — find collaborators for your ideas." className="mb-2" />
       <div className="no-scrollbar my-5 flex gap-1.5 overflow-x-auto">
         {['All', 'Developer', 'Designer', 'Founder', 'Marketer', 'Video Editor', 'Writer', 'Investor', 'Student'].map((r) => (
           <button key={r} onClick={() => setRole(r)} aria-pressed={role === r} className={cx('shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition', role === r ? 'bg-ink text-white' : 'border border-line bg-white text-ink-2')}>{r}</button>

@@ -3,13 +3,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import { analyze } from './ai';
 import { applyCreator } from './seed';
-import { initialShared, initialState, nextId, SHARED_ACTIONS, SHARED_KEYS, trackedReducer } from './reducer';
+import { emptyShared, initialState, nextId, reducer, SHARED_ACTIONS, withAges } from './reducer';
+import { parsePath } from './routes';
 
-export { TEST_TASKS } from './reducer';
-
-const DEMO_KEY = 'fanos_demo_v2'; // full sandbox state (demo mode)
-const UI_KEY = 'fanos_ui_v2'; // per-browser UI state (both modes)
-const LOCAL_KEYS = ['view', 'creatorPage', 'memberPage', 'saved', 'feedback', 'validation', 'ideasTab', 'ideasCommunity', 'oppCategory', 'openProjectId', 'memberIdeasTab', 'memberIdeasCommunity', 'memberProjectId', 'communityId', 'communityTab'];
+const UI_KEY = 'fanos_ui_v3'; // per-browser UI preferences (tabs, filters, saved ideas)
+// Which page is open is NOT stored here: the URL is the source of truth (see AppRoot).
+const LOCAL_KEYS = ['saved', 'ideasTab', 'ideasCommunity', 'oppCategory', 'memberIdeasTab', 'memberIdeasCommunity', 'communityTab'];
 const ID_PREFIX = { ADD_IDEA: 'idea', CREATE_PROJECT: 'p', COMMENT: 'cm', CREATE_COMMUNITY: 'c', ANNOUNCE: 'an', ADD_TASK: 't', ADD_UPDATE: 'u', INVITE: 'inv' };
 const POLL_MS = 5000;
 
@@ -32,7 +31,7 @@ function landingViewFor(user, shared) {
 const Ctx = createContext(null);
 
 export function StoreProvider({ children }) {
-  const [state, rawDispatch] = useReducer(trackedReducer, undefined, initialState);
+  const [state, rawDispatch] = useReducer(reducer, undefined, initialState);
   const ref = useRef(state);
   useEffect(() => { ref.current = state; }, [state]);
   const hydrated = useRef(false);
@@ -41,7 +40,7 @@ export function StoreProvider({ children }) {
   const syncFrom = useCallback((snap) => {
     if (!snap || snap.unchanged) return;
     version.current = snap.version || version.current;
-    rawDispatch({ type: 'SYNC', shared: snap.shared, supported: snap.supported });
+    rawDispatch({ type: 'SYNC', shared: withAges(snap.shared), supported: snap.supported });
   }, []);
 
   const pull = useCallback(async (force = false) => {
@@ -55,49 +54,52 @@ export function StoreProvider({ children }) {
     }
   }, [syncFrom]);
 
-  // Enter live mode for a signed-in user.
-  const enterLive = useCallback(async (user, preferView) => {
-    rawDispatch({ type: 'NAV', patch: { mode: 'live', ...initialShared(), supported: {}, modal: null } });
+  // Load the signed-in user's real community. If the URL already points at a page in
+  // their app (e.g. /ideas), stay there; otherwise land on the role's home page.
+  const enterLive = useCallback(async (user, { fromAuth = false } = {}) => {
+    rawDispatch({ type: 'NAV', patch: { ...emptyShared(), supported: {}, modal: null } });
     rawDispatch({ type: 'SET_USER', user });
     version.current = 0;
     const snap = await pull(true);
-    const view = preferView || landingViewFor(user, snap?.shared);
-    rawDispatch({ type: 'NAV', patch: { view, ...(view === 'creator' ? { creatorPage: 'dashboard' } : {}) } });
+    const target = landingViewFor(user, snap?.shared);
+    // Opened at an app URL (refresh, bookmark, shared link)? Keep that page if it belongs to this user's app.
+    const fromUrl = fromAuth ? null : parsePath(window.location.pathname, user.role);
+    // A finished creator may also open /setup directly to edit their profile.
+    const allowed = target === 'creator' ? ['creator', 'creator-setup'] : target === 'member' ? ['member'] : [];
+    const keep = fromUrl && allowed.includes(fromUrl.view);
+    rawDispatch({ type: 'NAV', patch: keep ? { ...fromUrl, authChecked: true } : { view: target, creatorPage: 'dashboard', memberPage: 'home', authChecked: true } });
   }, [pull]);
 
-  // Boot: restore UI + demo sandbox from localStorage, then check for a live session.
+  // Boot: restore UI preferences, then check for a session.
   useEffect(() => {
-    let ui = null, demo = null;
-    try { ui = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); demo = JSON.parse(localStorage.getItem(DEMO_KEY) || 'null'); } catch { /* corrupt */ }
-    rawDispatch({ type: 'HYDRATE', state: { ...(demo || {}), ...(ui || {}), mode: 'demo' } });
+    let ui = null;
+    try { ui = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); } catch { /* corrupt */ }
+    rawDispatch({ type: 'HYDRATE', state: { ...(ui || {}) } });
     hydrated.current = true;
     api('/api/ai').then((d) => rawDispatch({ type: 'NAV', patch: { aiEnabled: !!d?.enabled } })).catch(() => {});
     api('/api/auth/me').then((d) => {
       rawDispatch({ type: 'NAV', patch: { serverError: d?.configured === false ? 'Accounts are not configured on this server yet (Supabase keys missing).' : null } });
       if (d?.user) enterLive(d.user);
-      else if (ui?.mode === 'live') rawDispatch({ type: 'NAV', patch: { view: 'landing' } });
-    }).catch((e) => rawDispatch({ type: 'NAV', patch: { serverError: e.status === 503 ? e.message : null } }));
+      else rawDispatch({ type: 'NAV', patch: { authChecked: true } });
+    }).catch((e) => rawDispatch({ type: 'NAV', patch: { authChecked: true, serverError: e.status === 503 ? e.message : 'Cannot reach the FanOS server.' } }));
   }, [enterLive]);
 
-  // Persist: UI state always; full sandbox only in demo mode.
+  // Persist UI preferences.
   useEffect(() => {
     if (!hydrated.current) return;
-    try {
-      localStorage.setItem(UI_KEY, JSON.stringify({ ...pick(state, LOCAL_KEYS), mode: state.mode }));
-      if (state.mode === 'demo') localStorage.setItem(DEMO_KEY, JSON.stringify({ ...pick(state, SHARED_KEYS), meId: state.meId, supported: state.supported }));
-    } catch { /* quota */ }
+    try { localStorage.setItem(UI_KEY, JSON.stringify(pick(state, LOCAL_KEYS))); } catch { /* quota */ }
   }, [state]);
 
-  // Live mode: poll for changes made by other people (new members, ideas, votes…).
+  // Poll for changes made by other people (new members, ideas, votes…).
   useEffect(() => {
-    if (state.mode !== 'live' || !state.user) return;
+    if (!state.user) return;
     const i = setInterval(() => { if (document.visibilityState === 'visible') pull(); }, POLL_MS);
     return () => clearInterval(i);
-  }, [state.mode, state.user, pull]);
+  }, [state.user, pull]);
 
   const dispatch = useCallback((a) => {
     const s = ref.current;
-    if (s.mode !== 'live' || !SHARED_ACTIONS.has(a.type)) { rawDispatch(a); return; }
+    if (!s.user || !SHARED_ACTIONS.has(a.type)) { rawDispatch(a); return; }
     const action = ID_PREFIX[a.type] && !a.id ? { ...a, id: nextId(ID_PREFIX[a.type]) } : a;
     rawDispatch(action); // optimistic
     api('/api/actions', { method: 'POST', body: JSON.stringify(action) })
@@ -115,29 +117,16 @@ export function StoreProvider({ children }) {
     async signup(body) {
       const d = await api('/api/auth/signup', { method: 'POST', body: JSON.stringify(body) });
       if (!d?.user) throw Object.assign(new Error(d?.error || 'Account created — please log in'), { status: 200 });
-      await enterLive(d.user);
+      await enterLive(d.user, { fromAuth: true });
       return d.user;
     },
-    async login(body) { const d = await api('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }); await enterLive(d.user); return d.user; },
+    async login(body) { const d = await api('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }); await enterLive(d.user, { fromAuth: true }); return d.user; },
     async logout() {
       try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
-      let demo = null;
-      try { demo = JSON.parse(localStorage.getItem(DEMO_KEY) || 'null'); } catch { /* ignore */ }
       rawDispatch({ type: 'SET_USER', user: null });
-      rawDispatch({ type: 'NAV', patch: { mode: 'demo', ...initialShared(), ...(demo || {}), view: 'landing', modal: null } });
+      rawDispatch({ type: 'NAV', patch: { ...emptyShared(), supported: {}, view: 'landing', modal: null } });
     },
   }), [enterLive]);
-
-  // Demo mode = browser-only sandbox with seeded data (no account needed).
-  const startDemo = useCallback((patch = {}) => {
-    const s = ref.current;
-    if (s.mode === 'live') {
-      let demo = null;
-      try { demo = JSON.parse(localStorage.getItem(DEMO_KEY) || 'null'); } catch { /* ignore */ }
-      rawDispatch({ type: 'NAV', patch: { mode: 'demo', ...initialShared(), meId: null, supported: {}, ...(demo || {}) } });
-    }
-    rawDispatch({ type: 'NAV', patch: { view: 'creator', creatorPage: 'dashboard', ...patch } });
-  }, []);
 
   // Keep every component's view of the creator profile in sync (see seed.applyCreator).
   applyCreator(state.creator);
@@ -147,7 +136,7 @@ export function StoreProvider({ children }) {
     [state.ideas, state.members, state.opportunities],
   );
 
-  const value = useMemo(() => ({ state, dispatch, intel, auth, startDemo, refresh: () => pull(true) }), [state, dispatch, intel, auth, startDemo, pull]);
+  const value = useMemo(() => ({ state, dispatch, intel, auth, refresh: () => pull(true) }), [state, dispatch, intel, auth, pull]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
