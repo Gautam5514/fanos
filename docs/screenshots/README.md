@@ -1,17 +1,16 @@
-# Screenshots
+# README screenshots
 
-Drop UI screenshots here and they will render in the main `README.md`.
+Actual public-page captures from the local FanOS frontend at a 1440 × 1000 desktop viewport. No authenticated user data is included.
 
-Expected files (referenced by the README — rename your captures to match):
+| File | Content |
+| --- | --- |
+| `landing.png` | Landing hero and the beginning of its sample dashboard illustration. |
+| `workflow.png` | The six-step community-to-project workflow. |
+| `features.png` | Public feature overview. |
+| `signup.png` | Account registration interface. |
 
-| File | What to capture |
-|------|-----------------|
-| `landing.png`    | The landing page (hero + Get Started / View Demo) |
-| `dashboard.png`  | Creator dashboard (members, ideas, AI signals) |
-| `community.png`  | A community page (Feed / Ideas / Members / Projects) |
-| `ai-insights.png`| AI Signals / Weekly AI Brief |
+The dashboard illustration uses sample values and is labelled on the landing page. These files do not represent a populated live creator account.
 
-Tips for clean screenshots:
-- Use a 1280–1440px wide browser window.
-- Hide personal data if capturing live mode (use View Demo for safe sample data).
-- PNG is preferred; keep each file under ~1 MB if possible.
+To refresh the images, run `npm run dev` from `frontend/`, open `http://localhost:3000` at the same viewport width, and capture the landing viewport, `#how` section, `#features` section, and `/auth/signup`. Wait for fonts and section reveal animations to finish before capturing. Save PNGs with the names above and verify the main README renders them.
+
+For future authenticated screenshots, use an authorized test account and remove personal information before committing captures. Add image links to the main README only when the corresponding files exist.

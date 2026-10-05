@@ -4,12 +4,15 @@ import { useMemo, useState } from 'react';
 import {
   Heart, Handshake, Bookmark, Star, Megaphone, Rocket, Sparkles, Layers, Send, Check, Copy, RefreshCw,
   ShieldCheck, Brain, Tags, Fingerprint, GitMerge, Gauge, UserCheck, Loader2, AlertTriangle, MapPin, Trophy, Lightbulb, MessagesSquare, FolderKanban, Award,
+  CheckCircle2, Link2, Archive, ArchiveRestore,
 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { contributionScore, findSimilar, generatePromo, moderate, recommendTeam, summarizeIdea, fmt, ago, roleMatchesNeed } from '../lib/ai';
 import { CATEGORIES, CREATOR, NEEDS, categoryForCommunity } from '../lib/seed';
 import { Avatar, Bar, Button, Chip, Modal, ScoreRing, cx } from './ui';
 import { IdeaStatus, memberName, useOpen } from './shared';
+import ActionBrief from './ActionBrief';
+import { ideaStage } from '../lib/reducer';
 
 export function ModalRoot() {
   const { state } = useStore();
@@ -54,6 +57,20 @@ function IdeaModal({ id, onClose }) {
   const roleCounts = {};
   skilledVols.forEach((v) => (roleCounts[v.role] = (roleCounts[v.role] || 0) + 1));
 
+  const stage = ideaStage(idea, state.projects);
+  const copyPublicLink = async () => {
+    try { await navigator.clipboard.writeText(`${window.location.origin}/i/${idea.id}`); dispatch({ type: 'TOAST', toast: { text: 'Public link copied — anyone can open it' } }); } catch { /* ignore */ }
+  };
+  // Actions offered by the Action Brief's "next step" and the creator buttons.
+  const runAction = (action, memberId) => {
+    if (action === 'select') dispatch({ type: 'SELECT_IDEA', ideaId: idea.id, selected: true });
+    else if (action === 'workspace') open.project(idea.id);
+    else if (action === 'open-project') dispatch({ type: 'NAV', patch: { modal: null, creatorPage: 'projects', openProjectId: project?.id } });
+    else if (action === 'promote') open.promote(idea.id);
+    else if (action === 'invite' && memberId) open.invite(memberId);
+    else if (action === 'restore') dispatch({ type: 'ARCHIVE_IDEA', ideaId: idea.id, archived: false });
+  };
+
   const submitComment = (e) => {
     e.preventDefault();
     if (!comment.trim()) return;
@@ -79,11 +96,8 @@ function IdeaModal({ id, onClose }) {
               <span><span className="font-medium text-ink">{author.name}</span> <span className="text-muted">• {author.role} • score {contributionScore(author)} • {ago(idea.daysAgo)}</span></span>
             </button>
           )}
-          <div className="mt-5 rounded-2xl border border-accent/20 bg-accent-soft/40 p-4">
-            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.12em] text-accent"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> AI Summary</p>
-            <p className="mt-1 text-sm text-ink">{summarizeIdea(idea)}</p>
-          </div>
           <p className="mt-4 text-[15px] leading-relaxed text-ink-2">{idea.description}</p>
+          <ActionBrief idea={idea} isCreator={isCreator} onAction={runAction} />
 
           <div className="mt-5">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">What this idea needs</p>
@@ -99,11 +113,16 @@ function IdeaModal({ id, onClose }) {
           <div className="mt-6 flex flex-wrap gap-2">
             {isCreator ? (
               <>
-                <Button variant={idea.featured ? 'soft' : 'secondary'} icon={Star} onClick={() => dispatch({ type: 'FEATURE', ideaId: idea.id })}>{idea.featured ? 'Selected & featured' : 'Select & feature'}</Button>
-                <Button variant="secondary" icon={Megaphone} onClick={() => open.promote(idea.id)}>Promote to audience</Button>
-                {idea.status === 'project'
-                  ? <Button variant="primary" icon={FolderKanban} onClick={() => { dispatch({ type: 'NAV', patch: { modal: null, creatorPage: 'projects', openProjectId: project?.id } }); }}>Open project</Button>
-                  : <Button variant="accent" icon={Rocket} onClick={() => open.project(idea.id)}>Create collaboration</Button>}
+                {(stage === 'submitted' || stage === 'discussing') && <Button variant="accent" icon={CheckCircle2} onClick={() => runAction('select')}>Select for pilot</Button>}
+                {stage === 'selected' && <Button variant="accent" icon={Rocket} onClick={() => runAction('workspace')}>Create workspace</Button>}
+                {(stage === 'in_progress' || stage === 'completed') && <Button variant="primary" icon={FolderKanban} onClick={() => runAction('open-project')}>Open project</Button>}
+                {stage !== 'archived' && <Button variant={idea.featured ? 'soft' : 'secondary'} icon={Star} onClick={() => dispatch({ type: 'FEATURE', ideaId: idea.id })}>{idea.featured ? 'Featured' : 'Feature'}</Button>}
+                {stage !== 'archived' && <Button variant="secondary" icon={Megaphone} onClick={() => open.promote(idea.id)}>Promote</Button>}
+                {idea.featured && <Button variant="secondary" icon={Link2} onClick={copyPublicLink}>Copy public link</Button>}
+                {stage === 'selected' && <Button variant="ghost" onClick={() => dispatch({ type: 'SELECT_IDEA', ideaId: idea.id, selected: false })}>Unselect</Button>}
+                {idea.status !== 'project' && (stage === 'archived'
+                  ? <Button variant="secondary" icon={ArchiveRestore} onClick={() => runAction('restore')}>Restore</Button>
+                  : <Button variant="danger" icon={Archive} onClick={() => dispatch({ type: 'ARCHIVE_IDEA', ideaId: idea.id, archived: true })}>Archive</Button>)}
               </>
             ) : (
               <>
@@ -497,17 +516,28 @@ const TASKS_BY_NEED = {
 function ProjectModal({ id, onClose }) {
   const { state, dispatch } = useStore();
   const idea = state.ideas.find((i) => i.id === id);
-  const team = useMemo(() => (idea ? recommendTeam(idea, state.members) : []), [idea, state.members]);
+  // Candidates: the idea's author, the AI-recommended team, then everyone who offered to help.
+  const team = useMemo(() => {
+    if (!idea) return [];
+    const list = [];
+    const add = (m, extra = {}) => { if (m && !list.some((t) => t.member.id === m.id)) list.push({ member: m, role: m.role, volunteered: idea.volunteers.some((v) => v.memberId === m.id), score: contributionScore(m), ...extra }); };
+    add(state.members.find((m) => m.id === idea.authorId), { author: true });
+    recommendTeam(idea, state.members).forEach((t) => add(t.member));
+    idea.volunteers.forEach((v) => add(state.members.find((m) => m.id === v.memberId)));
+    return list;
+  }, [idea, state.members]);
   const [name, setName] = useState(() => (idea ? idea.title.replace(/^(build|make|please|we need)( a| an)?\s+/i, '').replace(/^./, (c) => c.toUpperCase()) : ''));
   const [picked, setPicked] = useState(() => Object.fromEntries(team.map((t) => [t.member.id, true])));
+  const [ownerId, setOwnerId] = useState(() => team[0]?.member.id || '');
   if (!idea) return <Modal open={false} onClose={onClose} />;
   const tasks = ['Kick-off call & define the first milestone', ...idea.needs.map((n) => TASKS_BY_NEED[n]).filter(Boolean)];
   const chosen = team.filter((t) => picked[t.member.id]);
+  const owner = chosen.some((c) => c.member.id === ownerId) ? ownerId : chosen[0]?.member.id;
 
   return (
     <Modal open onClose={onClose} width="max-w-3xl" labelledBy="project-title">
       <div className="p-6 sm:p-8">
-        <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.12em] text-accent"><Rocket className="h-3.5 w-3.5" aria-hidden="true" /> Create collaboration</p>
+        <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.12em] text-accent"><Rocket className="h-3.5 w-3.5" aria-hidden="true" /> Create workspace</p>
         <h2 id="project-title" className="mt-1 font-display text-2xl font-semibold text-ink">From idea to action — {idea.title}</h2>
 
         <label htmlFor="pname" className="mt-6 block text-sm font-medium text-ink">Project name</label>
@@ -515,8 +545,8 @@ function ProjectModal({ id, onClose }) {
 
         <div className="mt-6 flex items-end justify-between">
           <div>
-            <p className="text-sm font-medium text-ink">AI-recommended team</p>
-            <p className="text-xs text-muted">Matched from volunteers by skills needed & contribution score</p>
+            <p className="text-sm font-medium text-ink">Team</p>
+            <p className="text-xs text-muted">The author, AI-matched members and everyone who offered to help</p>
           </div>
           <Chip tone="accent" icon={Sparkles}>{chosen.length} selected</Chip>
         </div>
@@ -531,7 +561,7 @@ function ProjectModal({ id, onClose }) {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-ink">{t.member.name}</p>
                     <p className="truncate text-xs text-muted">{t.role} • {t.member.skills.slice(0, 2).join(', ')} • {t.score}</p>
-                    {t.volunteered && <p className="text-[11px] font-medium text-mint">Volunteered</p>}
+                    {(t.author || t.volunteered) && <p className="text-[11px] font-medium text-mint">{t.author ? 'Idea author' : 'Volunteered'}</p>}
                   </div>
                   <span className={cx('flex h-5 w-5 items-center justify-center rounded-md border', on ? 'border-accent bg-accent text-white' : 'border-line')}>{on && <Check className="h-3.5 w-3.5" aria-hidden="true" />}</span>
                 </button>
@@ -539,6 +569,17 @@ function ProjectModal({ id, onClose }) {
             );
           })}
         </ul>
+
+        {!team.length && <p className="mt-3 rounded-xl bg-paper px-4 py-3 text-sm text-muted">No members to add yet. Members appear here once they join and offer to help.</p>}
+
+        {chosen.length > 0 && (
+          <div className="mt-6">
+            <label htmlFor="powner" className="text-sm font-medium text-ink">Owner <span className="font-normal text-muted">(responsible for progress)</span></label>
+            <select id="powner" value={owner} onChange={(e) => setOwnerId(e.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-line bg-white px-3 text-sm outline-none focus:border-accent">
+              {chosen.map((c) => <option key={c.member.id} value={c.member.id}>{c.member.name} · {c.role}</option>)}
+            </select>
+          </div>
+        )}
 
         <p className="mt-6 text-sm font-medium text-ink">Starter tasks</p>
         <ul className="mt-2 space-y-1.5">
@@ -549,10 +590,10 @@ function ProjectModal({ id, onClose }) {
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button variant="accent" icon={Rocket} disabled={!name.trim() || !chosen.length}
             onClick={() => {
-              dispatch({ type: 'CREATE_PROJECT', ideaId: idea.id, name: name.trim(), description: idea.description, contributors: chosen.map((c) => ({ memberId: c.member.id, role: c.role })), tasks });
+              dispatch({ type: 'CREATE_PROJECT', ideaId: idea.id, name: name.trim(), description: idea.description, contributors: chosen.map((c) => ({ memberId: c.member.id, role: c.role })), ownerId: owner, tasks });
               dispatch({ type: 'NAV', patch: { modal: null } });
             }}>
-            Create project & invite {chosen.length}
+            Start project with {chosen.length}
           </Button>
         </div>
       </div>

@@ -8,6 +8,7 @@ import { CREATOR } from '../../lib/seed';
 import { Avatar, Button, SectionTitle, Sparkline, cx } from '../ui';
 import { ClusterCard, IdeaCard, PersonRow, useOpen, clusterHelpers } from '../shared';
 import { Aurora } from '../chrome';
+import DrawnArrow from '../DrawnArrow';
 
 function greeting() {
   const h = new Date().getHours();
@@ -55,19 +56,21 @@ export default function Dashboard({ go, ask }) {
             </div>
           </div>
 
-          <ol aria-label="Noise to signal" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <ol aria-label="Noise to signal" className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-x-9">
             {[
               { n: totalComments.toLocaleString('en-US'), l: 'Comments', s: `${totalSupports.toLocaleString('en-US')} supports`, icon: MessageSquareText },
               { n: state.ideas.length.toLocaleString('en-US'), l: 'Ideas shared', s: 'by your members', icon: Lightbulb },
               { n: intel.clusters.length, l: 'Topic clusters', s: 'duplicates merged', icon: Layers },
               { n: brief.things.length, l: 'Need you', s: 'ranked by Signal', icon: Target, hl: true },
             ].map((x, i) => (
-              <li key={x.l} className={cx('relative rounded-2xl p-4 ring-1', x.hl ? 'bg-gradient-to-br from-accent via-[#8a3df0] to-coral ring-white/20 shadow-[0_18px_40px_-14px_rgba(176,63,240,.8)]' : 'bg-white/[.06] ring-white/10')}>
-                <x.icon className={cx('h-4 w-4', x.hl ? 'text-white' : 'text-white/55')} aria-hidden="true" />
-                <p className="mt-3 font-display text-[28px] font-semibold leading-none">{x.n}</p>
-                <p className="mt-1.5 text-[13px] font-medium">{x.l}</p>
-                <p className={cx('text-[11px]', x.hl ? 'text-white/80' : 'text-white/45')}>{x.s}</p>
-                {i < 3 && <ArrowRight className="absolute -right-[11px] top-1/2 z-10 hidden h-5 w-5 -translate-y-1/2 rounded-full bg-night-3 p-1 text-white/70 ring-1 ring-white/15 sm:block" aria-hidden="true" />}
+              <li key={x.l} className={cx('relative rounded-xl px-2.5 py-2 ring-1', x.hl ? 'bg-gradient-to-br from-accent via-[#8a3df0] to-coral ring-white/20 shadow-[0_14px_32px_-12px_rgba(176,63,240,.8)]' : 'bg-white/[.06] ring-white/10')}>
+                <div className="flex items-center justify-between">
+                  <p className="font-display text-[20px] font-semibold leading-none">{x.n}</p>
+                  <x.icon className={cx('h-3.5 w-3.5', x.hl ? 'text-white' : 'text-white/50')} aria-hidden="true" />
+                </div>
+                <p className="mt-1.5 text-[13px] font-medium leading-tight">{x.l}</p>
+                <p className={cx('truncate text-[10px]', x.hl ? 'text-white/80' : 'text-white/45')}>{x.s}</p>
+                {i < 3 && <DrawnArrow variant="wave" tone="light" delay={0.3 + i * 0.3} className="absolute -right-[42px] top-1/2 z-10 hidden h-6 w-10 -translate-y-1/2 sm:block" />}
               </li>
             ))}
           </ol>
@@ -75,20 +78,23 @@ export default function Dashboard({ go, ask }) {
       </section>
 
       {/* KPIs */}
-      <section aria-label="Community metrics" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <section aria-label="Community metrics" className="grid grid-cols-2 gap-3 sm:gap-x-11 lg:grid-cols-4">
         {[
           { label: 'Members', value: totalMembers.toLocaleString('en-US'), sub: totalMembers ? `${joinedThisWeek} joined this week` : 'share your invite link', icon: Users, to: 'people', tile: 'tile-accent', chip: 'bg-accent-soft text-accent' },
           { label: 'Communities', value: state.communities.length, sub: 'interest-based', icon: Boxes, to: 'communities', tile: 'tile-sky', chip: 'bg-sky-soft text-sky' },
           { label: 'Collaboration requests', value: collabRequests, sub: `${rising} rising contributors`, icon: TrendingUp, to: 'ideas', tile: 'tile-mint', chip: 'bg-mint-soft text-mint' },
           { label: 'Opportunities', value: realOpps.length, sub: `${high.length} high-priority`, icon: Inbox, to: 'opportunities', tile: 'tile-coral', chip: 'bg-coral-soft text-coral' },
-        ].map((k) => (
-          <button key={k.label} onClick={() => go(k.to)} className={cx('tile group p-4 text-left', k.tile)}>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted">{k.label}</span>
-              <span className={cx('flex h-8 w-8 items-center justify-center rounded-full transition group-hover:scale-110', k.chip)}><k.icon className="h-4 w-4" aria-hidden="true" /></span>
+        ].map((k, i) => (
+          <button key={k.label} onClick={() => go(k.to)} className={cx('tile group relative px-3.5 py-3 text-left', k.tile)}>
+            <div className="relative flex items-center gap-3">
+              <span className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition group-hover:scale-110', k.chip)}><k.icon className="h-4 w-4" aria-hidden="true" /></span>
+              <div className="min-w-0">
+                <p className="font-display text-[22px] font-semibold leading-none text-ink">{k.value}</p>
+                <p className="mt-1 truncate text-xs font-medium text-ink-2">{k.label}</p>
+              </div>
             </div>
-            <p className="mt-3 font-display text-[30px] font-semibold leading-none text-ink">{k.value}</p>
-            <p className="mt-1.5 text-xs text-muted">{k.sub}</p>
+            <p className="relative mt-2 truncate text-[11px] text-muted">{k.sub}</p>
+            {i < 3 && <DrawnArrow variant="wave" delay={1.3 + i * 0.3} className="absolute -right-[46px] top-1/2 z-10 hidden h-7 w-11 -translate-y-1/2 lg:block" />}
           </button>
         ))}
       </section>

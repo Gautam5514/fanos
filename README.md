@@ -1,264 +1,281 @@
 <div align="center">
 
-# FanOS — The Operating System for Your Audience
+# FanOS
 
-**Turn your audience into a community that builds with you.**
+### The operating system for your audience
 
-Followers → Communities → Ideas → AI Insights → Collaboration → Action
+Turn community ideas into collaborative projects—with the people, signals, and tools to move them forward.
 
-[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
-[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
-[![Express](https://img.shields.io/badge/Express-5-000000?logo=express)](https://expressjs.com/)
-[![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-38BDF8?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=next.js)](frontend/package.json)
+[![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)](frontend/package.json)
+[![Express](https://img.shields.io/badge/Express-5-353535?logo=express)](backend/package.json)
+[![Supabase](https://img.shields.io/badge/Supabase-Postgres%20%2B%20Auth-3ECF8E?logo=supabase&logoColor=white)](backend/supabase/migrations/001_fanos.sql)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)](frontend/package.json)
+
+[Overview](#overview) · [Screenshots](#screenshots) · [Getting started](#getting-started) · [Architecture](#architecture) · [Deployment](#deployment)
+
+![FanOS landing page](docs/screenshots/landing.png)
 
 </div>
 
----
+## Overview
 
-FanOS helps creators turn followers into organized communities, collect ideas, discover
-valuable people, and use AI to surface the best opportunities — then select an idea,
-build a team, and promote it.
+Great ideas and potential collaborators are easy to lose in comments and direct messages. FanOS gives creators a dedicated place to organize their audience, collect structured ideas, identify useful signals, and build with their community.
 
-## Table of Contents
+**Followers → Communities → Ideas → AI Signals → Collaboration → Action**
 
-- [Screenshots](#screenshots)
-- [Quick Start](#quick-start)
-- [Supabase Setup](#supabase-setup-one-time)
-- [How It Works](#how-it-works)
-- [Pages & URLs](#pages--urls)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Project Structure](#project-structure)
-- [Environment Variables](#environment-variables)
-- [Deployment](#deployment)
-- [Security Model](#security-model)
-- [Notes](#notes)
+Creators manage communities, review ideas, discover contributors, and launch projects. Members join interest-based spaces, share suggestions, support ideas, and contribute their skills.
+
+Accounts and community content are stored in Supabase. New communities start empty; the public landing page includes an explicitly labelled dashboard illustration with sample values.
 
 ## Screenshots
 
-> Add your captures to `docs/screenshots/` (see that folder's README for file names).
-> They render automatically once added.
+These captures show the actual locally rendered public interface. The dashboard visible in the landing-page hero is a product illustration with sample data, rather than an authenticated community.
 
-| Landing | Creator Dashboard |
-|---|---|
-| ![Landing](docs/screenshots/landing.png) | ![Dashboard](docs/screenshots/dashboard.png) |
+| Community workflow | Product capabilities |
+| :---: | :---: |
+| ![Six-step workflow from followers to action](docs/screenshots/workflow.png) | ![FanOS feature cards](docs/screenshots/features.png) |
 
-| Community Page | AI Insights |
-|---|---|
-| ![Community](docs/screenshots/community.png) | ![AI Insights](docs/screenshots/ai-insights.png) |
+<details>
+<summary><strong>View account registration</strong></summary>
 
-## Quick Start
+![FanOS account registration screen](docs/screenshots/signup.png)
 
-The app is split into two independent services — run both:
+</details>
 
-```bash
-# 1. Backend (API) — http://localhost:4000
-cd influencer/backend
-npm install
-cp .env.example .env            # add your Supabase URL + keys
-npm run dev
-
-# 2. Frontend (UI) — http://localhost:3000   (in a second terminal)
-cd influencer/frontend
-npm install
-cp .env.example .env.local      # BACKEND_URL=http://localhost:4000
-npm run dev
-```
-
-**Requirements:** Node.js 22+ and a free [Supabase](https://supabase.com/) project.
-
-## Supabase Setup (one-time)
-
-Open **Supabase → SQL Editor → New query**, paste the contents of
-[`backend/supabase/migrations/001_fanos.sql`](backend/supabase/migrations/001_fanos.sql),
-and **Run**.
-
-This creates three tables with Row Level Security enabled:
-
-| Table | Purpose |
-|---|---|
-| `profiles` | One row per auth user (role + link to member record) |
-| `app_state` | Versioned JSONB document holding all community content |
-| `creator_feedback` | Legacy table from the removed creator-test kit (unused by the UI) |
-
-**Only real data is shown.** There is no demo mode or sample data: every member, idea,
-community, project and opportunity comes from real users, and a new community starts empty
-with clear empty states. (The landing page's product illustrations use fixed sample values
-and are labelled as such.)
-
-## How It Works
-
-**Flow:** the creator clicks *Get Started → Creator* (the first creator account claims
-the community), fills in the creator profile, then shares the join link from the dashboard
-header (`<your-url>/?join=1`). Followers sign up as members, pick interests / skills / goals,
-and appear on the creator's dashboard within ~5 seconds.
-
-## Pages & URLs
-
-Every screen has its own URL, so pages can be bookmarked, refreshed and shared, and the
-browser Back/Forward buttons work. One catch-all route (`app/[[...slug]]/page.js`) renders the
-app; `app/lib/routes.js` maps URLs ↔ screens (`parsePath` / `pathFor`) and sets the tab title.
-
-| URL | Screen | Who |
-|---|---|---|
-| `/` | Landing page | everyone |
-| `/auth/login`, `/auth/signup` | Log in / create account (`/auth` → `/auth/login`) | signed out |
-| `/setup` | Creator profile setup | creator |
-| `/onboarding` | Member onboarding | member |
-| `/dashboard`, `/brief`, `/opportunities` | Creator dashboard, weekly brief, inbox | creator |
-| `/home`, `/profile` | Member home and profile | member |
-| `/ideas`, `/people`, `/communities`, `/projects` | Shown in the creator or member app, by role | both |
-| `/communities/:id`, `/projects/:id` | One community / project | both |
-
-Signed-out visitors opening an app URL are sent to `/auth/login`; a page that belongs to the
-other role redirects to that user's home (`/dashboard` or `/home`). The join link
-`/?join=1` opens `/auth/signup` as a member.
+Capture details and refresh instructions are in [docs/screenshots/README.md](docs/screenshots/README.md).
 
 ## Features
 
-**Community & people**
-- Email + password auth with Creator or Member roles
-- Creator profile + member onboarding (interests, skills, why joining)
-- Create and join communities; community feed, ideas, members, projects
-- Contributor profiles with a Contribution Score, people discovery
+| Area | Capabilities |
+| --- | --- |
+| **Communities** | Creator setup, member onboarding, interest-based spaces, feeds, and community membership. |
+| **Ideas** | Structured submissions, support, comments, volunteer participation, and duplicate/spam checks. |
+| **People** | Contributor profiles, Contribution Scores, and discovery by skills and interests. |
+| **AI signals** | Idea summaries, similar-idea clustering, trending topics, Signal Scores, and weekly briefs. |
+| **Collaboration** | Select ideas for pilots, assign owners and contributors, and track project tasks and updates. |
+| **Promotion** | Feature ideas, share public idea pages, and draft posts for Instagram, X, LinkedIn, and the community. |
+| **Creator copilot** | Ask questions about community activity; optionally enable LLM-generated responses. |
 
-**Ideas & collaboration**
-- Idea submission (title, description, category, help needed) with live duplicate/spam check
-- Idea cards: Support / Comment / I Can Help, with counts
-- Invite to collaborate → turn an idea into a project (team, tasks, updates)
-- Feature an idea and generate AI promotion posts (Instagram / X / LinkedIn / community)
+The built-in analysis engine works without an external AI key. An optional backend LLM integration adds richer summaries, copilot answers, and promotion copy.
 
-**AI engine** (works with no API key; richer with `OPENAI_API_KEY`)
-- Idea summaries
-- Similar-idea detection and merging (TF-IDF clustering)
-- Trending topics and an AI **Signal Score** with breakdown
-- Natural-language copilot ("Find developers interested in AI")
-- Weekly AI brief
+### From idea to execution
+
+```text
+Submitted → Discussing → Selected → In progress → Completed
+                 ↘ Archived (when no project is attached)
+```
+
+- **Submitted:** a member shares an idea.
+- **Discussing:** someone comments or volunteers to help.
+- **Selected:** the creator selects the idea for a pilot.
+- **In progress:** the creator creates a project workspace.
+- **Completed:** the creator or project owner marks the project complete.
+
+The lifecycle is derived from stored idea and project data. Each idea also has an Action Brief covering community evidence, available contributors, missing skills, and the next practical step. Creators can archive and restore eligible ideas.
+
+## Getting started
+
+### Prerequisites
+
+- **Node.js 22 or later** and npm.
+- A **Supabase project** for authentication and persistent community data.
+- An optional OpenAI-compatible API key for LLM features.
+
+Run the commands below from the repository root—the directory containing `frontend/` and `backend/`.
+
+### 1. Install dependencies
+
+```bash
+cd backend
+npm ci
+cd ../frontend
+npm ci
+cd ..
+```
+
+### 2. Configure the environment
+
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env.local
+```
+
+In `backend/.env`, replace the placeholder values for `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SECRET_KEY`. Keep `frontend/.env.local` pointed at your local API:
+
+```dotenv
+BACKEND_URL=http://localhost:4000
+```
+
+### 3. Initialize Supabase
+
+In your project's **Supabase SQL Editor**, run [backend/supabase/migrations/001_fanos.sql](backend/supabase/migrations/001_fanos.sql).
+
+The migration creates `profiles` for user roles, `app_state` for versioned community data, and `creator_feedback` for the legacy feedback endpoint. Row Level Security is enabled; database access is handled by the backend.
+
+### 4. Start both services
+
+In one terminal:
+
+```bash
+cd backend
+npm run dev
+```
+
+In a second terminal:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open **http://localhost:3000**. The API runs at **http://localhost:4000**; its health endpoint is **http://localhost:4000/health**.
+
+### 5. Create your community
+
+1. Register as a **Creator** and complete the creator profile. The first creator account claims the community; subsequent creator registrations require the configured access code.
+2. Share the dashboard's member join link: `<frontend-url>/?join=1`.
+3. Members register, complete onboarding, and join communities.
+4. Review submissions, select an idea, and create a project with an owner, contributors, and tasks.
+
+## Configuration
+
+### Backend — `backend/.env`
+
+| Variable | Required | Purpose |
+| --- | :---: | --- |
+| `SUPABASE_URL` | Yes | Supabase project URL. |
+| `SUPABASE_PUBLISHABLE_KEY` | Yes | Publishable key used for authentication. |
+| `SUPABASE_SECRET_KEY` | Yes | Server-only key for database access and auth administration. |
+| `PORT` | No | API port; defaults to `4000`. |
+| `CREATOR_ACCESS_CODE` | No | Enables additional creator registrations after the first account. |
+| `OPENAI_API_KEY` | No | Enables optional LLM features. |
+| `OPENAI_MODEL` | No | Overrides the backend's default model. |
+| `OPENAI_BASE_URL` | No | Points LLM requests at an OpenAI-compatible endpoint. |
+| `FEEDBACK_ADMIN_TOKEN` | No | Admin access to legacy creator feedback. |
+| `SUPABASE_ACCESS_TOKEN` | No | Supabase CLI token; not required by the application runtime. |
+
+### Frontend — `frontend/.env.local`
+
+| Variable | Required | Purpose |
+| --- | :---: | --- |
+| `BACKEND_URL` | Yes for deployment | API base URL, without a trailing slash. Defaults to `http://localhost:4000` in the Next.js config. Rebuild/redeploy after changing it. |
+
+Environment files are git-ignored. Commit only placeholder `.env.example` files; keep Supabase secret keys and LLM keys on the backend.
 
 ## Architecture
 
-```
-Browser ──► frontend (Next.js UI) ──/api/* proxy──► backend (Express API) ──► Supabase
-```
-
-| | **frontend/** | **backend/** |
-|---|---|---|
-| **Stack** | Next.js 16, React 19, Tailwind 4 | Node 22, Express 5, Supabase JS |
-| **Does** | All UI, URL routing, optimistic updates, built-in AI engine | Auth, validation, roles, DB writes, optional LLM |
-| **Secrets** | none | Supabase secret key, OpenAI key, admin tokens |
-| **Deploy to** | Vercel / Netlify / any Node host | Render / Railway / Fly / Docker |
-
-The UI only ever calls relative `/api/*` URLs. `frontend/next.config.mjs` rewrites them to
-`BACKEND_URL`, so to the browser the API is on the same origin as the page — the Supabase
-session cookies stay first-party and no CORS setup is needed.
-
-**Backend API** (`backend/src/`)
-
-```
-GET  /health                                   health check for your host
-     /api/auth/{signup,login,logout,me}        Supabase Auth (email + password, httpOnly cookie sessions)
-GET  /api/state                                shared data for the signed-in user
-POST /api/actions                              every write: role check → sanitize → reducer
-GET|POST /api/ai                               optional LLM (copilot answers, promo rewrite)
-GET|POST /api/feedback                         creator test feedback
+```mermaid
+flowchart LR
+    Browser[Browser] --> UI[Next.js frontend]
+    UI -->|Same-origin /api/* proxy| API[Express backend]
+    API --> DB[Supabase Auth + Postgres]
+    API -. Optional LLM requests .-> LLM[OpenAI-compatible API]
 ```
 
-- **Storage:** Supabase Postgres. Accounts live in `auth.users` + `profiles`; community
-  content is one versioned JSONB document in `app_state`, written with optimistic concurrency
-  (`UPDATE … WHERE version = n`, retried on conflict). Safe to run multiple backend instances.
-- **Shared logic:** `reducer.js`, `ai.js` and `seed.js` are pure JS used by both sides
-  (browser for optimistic updates, server for validation). The source of truth is
-  `frontend/app/lib/`; after editing them run `cd backend && npm run sync-shared`.
-- **AI:** the built-in engine runs without any API key. With `OPENAI_API_KEY` set on the
-  backend, new ideas get LLM summaries, the copilot answers in natural language, and promo
-  posts can be rewritten.
+- **Frontend:** Next.js 16, React 19, Tailwind CSS 4, and Lucide icons. Handles role-based navigation, UI state, optimistic updates, and built-in analysis.
+- **Backend:** Express 5 with Supabase clients. Handles authentication, authorization, validation, persistence, and optional LLM requests.
+- **Persistence:** accounts live in Supabase Auth and `profiles`. Community content lives in a versioned JSONB document in `app_state`, with optimistic concurrency checks and retries.
+- **API proxy:** `frontend/next.config.mjs` forwards relative `/api/*` requests to `BACKEND_URL`, keeping browser requests and session cookies on the frontend origin.
+- **Shared logic:** `frontend/app/lib/{reducer,ai,seed}.js` is the source for the backend copies in `backend/src/shared/`.
 
-## Project Structure
+### Project structure
 
-```
-influencer/
-├── frontend/                  Next.js UI (no secrets, no database access)
+```text
+.
+├── frontend/
 │   ├── app/
-│   │   ├── components/        UI components
-│   │   ├── lib/               client store + shared pure logic (reducer, ai, seed)
-│   │   ├── layout.js, page.js
-│   ├── next.config.mjs        /api/* → BACKEND_URL proxy
-│   ├── .env.example
-│   └── package.json
-├── backend/                   Express API service
+│   │   ├── [[...slug]]/page.js   # Application route entry
+│   │   ├── components/          # Landing, auth, creator, and member UI
+│   │   ├── lib/                 # Store, routing, reducer, and analysis
+│   │   ├── globals.css
+│   │   └── layout.js
+│   ├── public/                 # Static assets
+│   └── next.config.mjs         # API proxy configuration
+├── backend/
 │   ├── src/
-│   │   ├── server.js          entry point (listens on PORT)
-│   │   ├── app.js             express app, route mounting, error handler
-│   │   ├── routes/            auth, community (state + actions), ai, feedback
-│   │   ├── lib/               supabase clients, auth, db, actions, llm
-│   │   └── shared/            copy of frontend/app/lib/{reducer,ai,seed}.js
+│   │   ├── app.js              # Express middleware and routes
+│   │   ├── server.js           # API entry point
+│   │   ├── routes/             # Auth, community, AI, public, feedback
+│   │   ├── lib/                # Validation, auth, persistence, and LLM
+│   │   └── shared/             # Copies of shared frontend logic
 │   ├── scripts/sync-shared.mjs
-│   ├── supabase/migrations/   SQL schema (RLS on, no public policies)
-│   ├── Dockerfile
-│   ├── .env.example
-│   └── package.json
-├── docs/screenshots/          images for this README
+│   ├── supabase/migrations/    # Database schema
+│   └── Dockerfile
+├── docs/screenshots/           # README screenshots
 └── README.md
 ```
 
-## Environment Variables
+### Key API endpoints
 
-**`backend/.env`** (copy from `backend/.env.example`)
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Service health check. |
+| `POST` | `/api/auth/signup`, `/api/auth/login`, `/api/auth/logout` | Account and session operations. |
+| `GET` | `/api/auth/me` | Current signed-in user. |
+| `GET` | `/api/state` | Community state for the authenticated user. |
+| `POST` | `/api/actions` | Authorized, validated state changes. |
+| `GET`, `POST` | `/api/ai` | LLM availability and optional generation. |
+| `GET` | `/api/public/ideas/:id` | Public data for a featured, unarchived idea. |
+| `GET`, `POST` | `/api/feedback` | Legacy creator feedback operations. |
 
-| Variable | Required | Description |
-|---|:---:|---|
-| `SUPABASE_URL` | ✅ | Your Supabase project URL |
-| `SUPABASE_PUBLISHABLE_KEY` | ✅ | Publishable (anon) key — used for auth |
-| `SUPABASE_SECRET_KEY` | ✅ | Secret key — bypasses RLS. **Never commit.** |
-| `PORT` | | Port to listen on (default `4000`; most hosts set it) |
-| `CREATOR_ACCESS_CODE` | | Lets additional creators register after the first |
-| `OPENAI_API_KEY` | | Enables LLM summaries, copilot, promo rewrite |
-| `OPENAI_MODEL` / `OPENAI_BASE_URL` | | Override model / use an OpenAI-compatible API |
-| `FEEDBACK_ADMIN_TOKEN` | | Read all creator-test feedback via `GET /api/feedback` |
+### Application routes
 
-**`frontend/.env.local`** (copy from `frontend/.env.example`)
+| Routes | Audience |
+| --- | --- |
+| `/` | Public landing page. |
+| `/auth/login`, `/auth/signup` | Account access. |
+| `/setup` | Creator profile setup. |
+| `/onboarding` | Member onboarding. |
+| `/dashboard`, `/brief`, `/opportunities` | Creator views. |
+| `/home`, `/profile` | Member views. |
+| `/ideas`, `/people`, `/communities`, `/projects` | Creator and member views, adapted to role. |
+| `/communities/:id`, `/projects/:id` | Community and project details. |
+| `/i/:id` | Public featured idea page. |
 
-| Variable | Required | Description |
-|---|:---:|---|
-| `BACKEND_URL` | ✅ | Backend base URL, e.g. `https://fanos-api.onrender.com` (no trailing slash). Read at build time — redeploy the frontend after changing it. |
+Protected pages send signed-out visitors to login. Role-specific pages redirect users to their appropriate home. The member invitation URL `/?join=1` opens member registration.
 
-> ⚠️ `.env` and `.env.local` are git-ignored. Only `.env.example` files (no real secrets) are committed.
+## Development
+
+| Directory | Command | Purpose |
+| --- | --- | --- |
+| `frontend/` | `npm run dev` | Start the frontend development server. |
+| `frontend/` | `npm run lint` | Run ESLint. |
+| `frontend/` | `npm run build` | Build the production frontend. |
+| `frontend/` | `npm start` | Serve a completed production build. |
+| `backend/` | `npm run dev` | Run the API with Node's watch mode. |
+| `backend/` | `npm start` | Start the API. |
+| `backend/` | `npm run sync-shared` | Refresh backend copies of shared frontend logic. |
+
+After changing the shared reducer, analysis engine, or configuration in `frontend/app/lib/`, run `npm run sync-shared` from `backend/` and include the generated changes in your contribution.
 
 ## Deployment
 
-Deploy the **backend first**, then point the frontend at it.
+Initialize the Supabase schema before using the deployed application, then deploy the backend and frontend as separate services.
 
-**1. Backend** (Render / Railway / Fly / any Docker host)
-- Root directory: `backend`
-- Build: `npm install` · Start: `npm start` (or use the included `Dockerfile`)
-- Set the backend env vars above in the host's dashboard.
-- Health check path: `/health`
-- Copy the public URL, e.g. `https://fanos-api.onrender.com`.
+| Setting | Backend | Frontend |
+| --- | --- | --- |
+| Root directory | `backend` | `frontend` |
+| Install | `npm ci` | `npm ci` |
+| Build | None; or use the included Dockerfile | `npm run build` |
+| Start | `npm start` | `npm start`, or the host's Next.js integration |
+| Configuration | Supabase keys and optional LLM settings | `BACKEND_URL` set to the deployed API URL |
+| Health check | `/health` | `/` |
 
-**2. Frontend** (Vercel / Netlify / any Node host)
-- Root directory: `frontend` (framework: Next.js, default build settings)
-- Env var: `BACKEND_URL=https://fanos-api.onrender.com`
-- Deploy. Share `<frontend-url>/?join=1` with followers.
+The frontend can run on a Next.js-capable host; the backend needs a Node.js 22+ or Docker host. After deployment, verify login and member registration through the frontend URL, then share `<frontend-url>/?join=1`.
 
-**3. Supabase:** run `backend/supabase/migrations/001_fanos.sql` once (see above).
+## Troubleshooting
 
-## Security Model
+| Symptom | Check |
+| --- | --- |
+| “Supabase is not configured” | Set all three required Supabase values in `backend/.env` and restart the API. |
+| “Database tables are missing” | Run the SQL migration in the correct Supabase project. |
+| Frontend API requests fail | Confirm the backend is running and `BACKEND_URL` matches its address; rebuild after production configuration changes. |
+| Additional creator registration is blocked | Configure `CREATOR_ACCESS_CODE` on the backend. |
+| LLM generation is unavailable | Check the optional API key, model, and base URL. Built-in analysis remains available without an LLM key. |
 
-- The **browser never talks to the database.** Tables have RLS enabled with **no policies**,
-  so the publishable key cannot read them; only the backend (secret key) can.
-- The backend rebuilds every action from allow-lists; identities (author, member, creator)
-  come from the Supabase session.
-- Members cannot run creator actions or see the opportunities inbox.
-- Email sign-ups are created pre-confirmed (no confirmation email). There is no password
-  reset UI yet.
+## Security and current limitations
 
-## Notes
+Authentication uses Supabase sessions in HTTP-only cookies. The backend validates actions against allow-lists and derives identities from the session. Database tables have RLS enabled with no public policies; access uses the backend's server-only secret key. Public idea endpoints expose selected fields and abbreviated member names.
 
-- **`app/lib/seed.js`** holds configuration only — the allow-lists (categories, interests,
-  roles, goals, needs, skills) used to validate every write — and the live creator profile.
-  It contains no sample records.
-- **Ages are real:** members, ideas, comments, projects and updates store timestamps
-  (`joinedAt`, `createdAt`, `at`); "joined 3 days ago" etc. are computed from them on load.
-- **Next step for scale:** split `app_state` into normalized tables (communities, ideas, votes,
-  comments, projects…) and add pgvector for embeddings.
+Email sign-ups are currently pre-confirmed, and a password reset UI is not implemented. Community content currently uses a shared JSONB document; normalized tables and embedding-based search are possible future improvements, rather than existing features.

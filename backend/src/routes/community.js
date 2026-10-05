@@ -5,8 +5,21 @@ import { getUser, rateLimited } from '../lib/auth.js';
 import { loadState, loadVersion } from '../lib/db.js';
 import { readJson } from '../lib/http.js';
 import { llmEnabled, summarizeIdea } from '../lib/llm.js';
+import { searchState } from '../lib/search.js';
 
 const router = Router();
+
+// Global community search (members, ideas, communities, projects, + opportunities for creators).
+// Deterministic, no LLM required, role-scoped and rate-limited.
+router.get('/search', async (req, res) => {
+  const user = await getUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Sign in required' });
+  if (rateLimited(req, `search:${user.id}`, 120, 60_000)) return res.status(429).json({ error: 'Slow down a little' });
+  const q = String(req.query.q || '');
+  if (q.trim().length < 2) return res.json({ query: q.trim(), total: 0, groups: [] });
+  const st = await loadState();
+  res.json(searchState(user, st, q));
+});
 
 // Shared community data for the signed-in user. `?v=<version>` → {unchanged:true} when nothing changed.
 router.get('/state', async (req, res) => {

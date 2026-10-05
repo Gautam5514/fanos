@@ -167,8 +167,8 @@ export default function Landing() {
           </div>
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {FEATURES.map(([Icon, title, text, span], i) => (
-              <div key={title} className={cx('card group relative overflow-hidden p-6 transition hover:-translate-y-0.5 hover:shadow-pop', span, i === 0 && 'ai-glow')}>
-                <span className={cx('flex h-10 w-10 items-center justify-center rounded-xl', i === 0 ? 'bg-gradient-to-br from-accent to-coral text-white' : 'bg-accent-soft text-accent')}>
+              <div key={title} className={cx('card paint-fill group relative overflow-hidden p-6 transition hover:-translate-y-0.5 hover:shadow-pop', span, i === 0 && 'ai-glow')}>
+                <span className={cx('flex h-10 w-10 items-center justify-center rounded-xl transition group-hover:scale-110', i === 0 ? 'bg-gradient-to-br from-accent to-coral text-white' : 'bg-accent-soft text-accent')}>
                   <Icon className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <h3 className="mt-4 font-display text-lg font-semibold text-ink">{title}</h3>

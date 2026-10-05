@@ -632,7 +632,9 @@ export function actionBrief(idea, state, intel) {
     .filter((h) => h.member)
     .sort((a, b) => contributionScore(b.member) - contributionScore(a.member));
   const needs = idea.needs.filter((n) => n !== 'Feedback');
-  const missingNeeds = needs.filter((n) => !helpers.some((h) => roleMatchesNeed(h.member.role, n)));
+  const author = state.members.find((m) => m.id === idea.authorId);
+  // A need is covered if a volunteer or the author themselves has the matching role.
+  const missingNeeds = needs.filter((n) => !(author && roleMatchesNeed(author.role, n)) && !helpers.some((h) => roleMatchesNeed(h.member.role, n)));
   const taken = new Set([idea.authorId, ...helpers.map((h) => h.member.id)]);
   // People matching: members whose declared role fits a missing need, best contributors first.
   const candidates = missingNeeds.flatMap((need) => state.members

@@ -144,15 +144,17 @@ export default function CreatorApp() {
       <div className={cx('relative transition-[padding] duration-300 ease-out', railPad)}>
         <Aurora className={cx('h-[560px]', auroraLeft)} />
         <header className="glass sticky top-0 z-20 border-b border-line/70">
-          <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-3 px-4 sm:px-6">
-            <button className="rounded-lg p-2 hover:bg-line-2 lg:hidden" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu className="h-5 w-5" /></button>
-            <form className="relative max-w-xl flex-1" onSubmit={(e) => { e.preventDefault(); const q = new FormData(e.currentTarget).get('q'); if (q) { ask(String(q)); e.currentTarget.reset(); } }}>
+          <div className="mx-auto grid h-16 max-w-[1400px] grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 sm:px-6">
+            <div className="flex items-center">
+              <button className="rounded-lg p-2 hover:bg-line-2 lg:hidden" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu className="h-5 w-5" /></button>
+            </div>
+            <form className="relative w-full max-w-md justify-self-center" onSubmit={(e) => { e.preventDefault(); const q = new FormData(e.currentTarget).get('q'); if (q) { ask(String(q)); e.currentTarget.reset(); } }}>
               <Sparkles className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" aria-hidden="true" />
-              <label htmlFor="top-ask" className="sr-only">Ask anything about your community</label>
-              <input id="top-ask" name="q" autoComplete="off" placeholder="Ask anything about your community…" className="h-11 w-full rounded-2xl border border-line bg-white/90 pl-10 pr-16 text-sm shadow-sm outline-none transition focus:border-accent focus:bg-white focus:ring-4 focus:ring-accent/10" />
-              <kbd className="absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-line bg-paper px-1.5 py-0.5 text-[10px] text-muted sm:block">⌘K</kbd>
+              <label htmlFor="top-ask" className="sr-only">Search your community</label>
+              <input id="top-ask" name="q" autoComplete="off" placeholder="Search your community…" className="h-10 w-full rounded-full border border-line bg-white/80 pl-9 pr-14 text-[13px] shadow-sm outline-none transition hover:border-ink/15 focus:border-accent focus:bg-white focus:shadow-md focus:ring-4 focus:ring-accent/10" />
+              <kbd className="absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded-md border border-line bg-paper px-1.5 py-0.5 text-[10px] text-muted sm:block">⌘K</kbd>
             </form>
-            <div className="ml-auto">
+            <div className="flex items-center justify-end">
               <ProfileMenu
                 name={CREATOR.name || state.user?.name}
                 email={state.user?.email}

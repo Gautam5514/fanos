@@ -2,7 +2,7 @@
 
 // Decision-ready "Action Brief" shown on every idea: problem, community evidence,
 // who can help, what's missing and the next practical step (see lib/ai.js → actionBrief).
-import { AlertTriangle, ArrowRight, CheckCircle2, Lightbulb, MessageSquareQuote, Sparkles, UserPlus, Users } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Lightbulb, MessageSquareQuote, Sparkles, UserPlus, Users } from 'lucide-react';
 import { useMemo } from 'react';
 import { useStore } from '../lib/store';
 import { actionBrief, summarizeIdea } from '../lib/ai';
@@ -99,4 +99,3 @@ export default function ActionBrief({ idea, isCreator, onAction }) {
   );
 }
 
-export { ArrowRight };

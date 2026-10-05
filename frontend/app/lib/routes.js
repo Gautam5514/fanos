@@ -8,6 +8,7 @@
 //   /home /profile                               member only
 //   /ideas /people /communities /projects        both roles (rendered for the user's role)
 //   /communities/:id  /projects/:id              one community / project
+//   /i/:id                    public page of a featured idea (no sign-in needed)
 //
 // parsePath() turns a URL into a NAV patch; pathFor() turns state back into a URL.
 
@@ -25,6 +26,7 @@ export function parsePath(pathname, role) {
   if (first === 'auth') return { view: 'auth', authTab: second === 'signup' ? 'signup' : 'login' };
   if (first === 'setup') return { view: 'creator-setup' };
   if (first === 'onboarding') return { view: 'onboarding' };
+  if (first === 'i' && second) return { view: 'public-idea', publicIdeaId: second };
   if (CREATOR_ONLY.includes(first)) return { view: 'creator', creatorPage: first };
   if (MEMBER_ONLY.includes(first)) return { view: 'member', memberPage: first };
   if (SHARED.includes(first)) {
@@ -42,6 +44,7 @@ export function pathFor(state, view) {
     case 'auth': return `/auth/${state.authTab === 'signup' ? 'signup' : 'login'}`;
     case 'creator-setup': return '/setup';
     case 'onboarding': return '/onboarding';
+    case 'public-idea': return `/i/${encodeURIComponent(state.publicIdeaId || '')}`;
     case 'creator': {
       const page = state.creatorPage || 'dashboard';
       if (page === 'communities' && state.communityId) return `/communities/${encodeURIComponent(state.communityId)}`;
@@ -69,5 +72,6 @@ export function titleFor(slug = []) {
   const [first, second] = slug;
   if (!first) return TITLES[''];
   if (first === 'auth') return `${second === 'signup' ? 'Create your account' : 'Log in'} · FanOS`;
+  if (first === 'i') return 'Featured idea · FanOS';
   return TITLES[first] ? `${TITLES[first]} · FanOS` : 'FanOS';
 }

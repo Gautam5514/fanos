@@ -9,7 +9,8 @@ import { useStore } from '../../lib/store';
 import { buildBrief, contributionScore, draftReply, hiddenGems, searchPeople, fmt, hoursAgo, ago } from '../../lib/ai';
 import { CREATOR, ROLES } from '../../lib/seed';
 import { Avatar, AvatarStack, Bar, Button, Chip, Empty, SectionTitle, Sparkline, cx } from '../ui';
-import { ClusterCard, IdeaCard, PersonCard, PersonRow, memberName, useOpen } from '../shared';
+import { ClusterCard, IdeaCard, PersonCard, PersonRow, StageTrack, memberName, useOpen } from '../shared';
+import { ideaStage, STAGE_LABEL, STAGES } from '../../lib/reducer';
 import CommunityPage from '../CommunityPage';
 import { Grad, PageHeader as SharedPageHeader } from '../chrome';
 
@@ -137,15 +138,16 @@ export function IdeasPage() {
   const community = state.ideasCommunity || 'all';
   const [q, setQ] = useState('');
   const [sort, setSort] = useState('signal');
+  const [stage, setStage] = useState('active'); // 'active' = every stage except archived
   const setTab = (t) => dispatch({ type: 'NAV', patch: { ideasTab: t } });
   const list = useMemo(() => {
-    let l = state.ideas.filter((i) => i.status !== 'archived');
+    let l = state.ideas.filter((i) => { const st = ideaStage(i, state.projects); return stage === 'active' ? st !== 'archived' : st === stage; });
     if (tab === 'featured') l = l.filter((i) => i.featured);
     if (community !== 'all') l = l.filter((i) => i.communityId === community);
     if (q.trim()) { const t = q.toLowerCase(); l = l.filter((i) => `${i.title} ${i.description} ${i.tags.join(' ')}`.toLowerCase().includes(t)); }
     const by = { signal: (a, b) => intel.scored.get(b.id).score - intel.scored.get(a.id).score, support: (a, b) => b.supports - a.supports, new: (a, b) => a.daysAgo - b.daysAgo, help: (a, b) => b.volunteers.length - a.volunteers.length };
     return [...l].sort(by[sort]);
-  }, [state.ideas, tab, community, q, sort, intel]);
+  }, [state.ideas, state.projects, stage, tab, community, q, sort, intel]);
   const clusters = community === 'all' ? intel.clusters : intel.clusters.filter((c) => c.items.some((x) => x.idea.communityId === community));
   const mergedCount = intel.clusters.reduce((s, c) => s + c.items.length, 0);
 
@@ -166,6 +168,15 @@ export function IdeasPage() {
           <option value="all">All communities</option>
           {state.communities.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
         </select>
+        {tab !== 'clusters' && (
+          <>
+            <label htmlFor="stage-filter" className="sr-only">Stage</label>
+            <select id="stage-filter" value={stage} onChange={(e) => setStage(e.target.value)} className="h-10 rounded-xl border border-line bg-white px-3 text-sm">
+              <option value="active">All active stages</option>
+              {[...STAGES, 'archived'].map((st) => <option key={st} value={st}>{STAGE_LABEL[st]}</option>)}
+            </select>
+          </>
+        )}
         {tab !== 'clusters' && (
           <>
             <div className="relative min-w-[200px] flex-1">
@@ -484,19 +495,39 @@ export function ProjectDetail({ project, onBack, memberMode = false }) {
   const author = isMember ? state.meId : 'creator';
   const candidates = (idea?.volunteers || []).map((v) => state.members.find((m) => m.id === v.memberId)).filter((m) => m && !project.contributors.some((c) => c.memberId === m.id))
     .sort((a, b) => contributionScore(b) - contributionScore(a));
+  const completed = project.status === 'Completed';
+  const owner = state.members.find((m) => m.id === project.ownerId);
+  const canSetStatus = !memberMode || (state.meId && project.ownerId === state.meId);
 
   return (
     <div className="animate-fade-up">
       <button onClick={onBack} className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> All projects</button>
       <div className="card p-6">
+        {idea && <div className="mb-5 max-w-xl"><StageTrack stage={ideaStage(idea, state.projects)} /></div>}
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
           <div>
-            <div className="flex flex-wrap gap-1.5"><Chip tone="mint" icon={Rocket}>{project.status}</Chip><Chip tone="outline">Owner: {CREATOR.name}</Chip></div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Chip tone={completed ? 'mint' : 'amber'} icon={completed ? Check : Rocket}>{completed ? 'Completed' : 'In progress'}</Chip>
+              {memberMode || !project.contributors.length ? (
+                <Chip tone="outline">Owner: {owner?.name || 'not set'}</Chip>
+              ) : (
+                <label className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white py-0.5 pl-2.5 pr-1 text-[11px] font-medium text-ink-2">
+                  Owner
+                  <select value={project.ownerId || ''} onChange={(e) => dispatch({ type: 'SET_OWNER', projectId: project.id, memberId: e.target.value })} className="rounded-full bg-transparent py-0.5 text-[11px] font-semibold text-ink outline-none" aria-label="Project owner">
+                    {!project.ownerId && <option value="">Choose…</option>}
+                    {project.contributors.map((c) => <option key={c.memberId} value={c.memberId}>{memberName(state, c.memberId)}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
             <h1 className="mt-2 font-display text-3xl font-semibold text-ink">Project: {project.name}</h1>
             <p className="mt-1 max-w-2xl text-ink-2">{project.description}</p>
             {idea && <button onClick={() => open.idea(idea.id)} className="mt-2 text-sm text-accent hover:underline">Born from a community idea by {memberName(state, idea.authorId)} → “{idea.title}”</button>}
           </div>
           <div className="flex gap-2">
+            {canSetStatus && (completed
+              ? <Button variant="secondary" onClick={() => dispatch({ type: 'PROJECT_STATUS', projectId: project.id, status: 'Active' })}>Reopen</Button>
+              : <Button variant="accent" icon={Check} onClick={() => dispatch({ type: 'PROJECT_STATUS', projectId: project.id, status: 'Completed' })}>Mark complete</Button>)}
             {!memberMode && idea && <Button variant="secondary" icon={Megaphone} onClick={() => open.promote(idea.id)}>Promote</Button>}
             {isMember && !joined && <Button variant="accent" icon={Plus} onClick={() => dispatch({ type: 'JOIN_PROJECT', projectId: project.id })}>Join team</Button>}
             {isMember && joined && <Chip tone="mint" icon={Check}>You’re on the team</Chip>}

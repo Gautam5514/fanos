@@ -67,6 +67,8 @@ export function StoreProvider({ children }) {
     // A finished creator may also open /setup directly to edit their profile.
     const allowed = target === 'creator' ? ['creator', 'creator-setup'] : target === 'member' ? ['member'] : [];
     const keep = fromUrl && allowed.includes(fromUrl.view);
+    // Public pages (/i/:id) stay open for signed-in users too.
+    if (fromUrl?.view === 'public-idea') { rawDispatch({ type: 'NAV', patch: { authChecked: true } }); return; }
     rawDispatch({ type: 'NAV', patch: keep ? { ...fromUrl, authChecked: true } : { view: target, creatorPage: 'dashboard', memberPage: 'home', authChecked: true } });
   }, [pull]);
 

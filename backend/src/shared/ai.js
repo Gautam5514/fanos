@@ -5,6 +5,7 @@
 // Every function is pure so it can later move behind an API / LLM.
 
 import { CREATOR } from './seed.js';
+import { ideaStage } from './reducer.js';
 
 // ---------------------------------------------------------------- text
 const STOP = new Set('a an the and or but of to in on for with at by from is are was were be been it this that these those i we you they he she me my our your us please can could would should will just about into over under via as so do does did have has had make makes made get got need needs want wants more most some any all every each one two how what which who when where why lets let also really very like using use used new way ways them their there here than then too only not no yes'.split(' '));
@@ -613,6 +614,70 @@ export function askCopilot(question, state, intel) {
   const similar = findSimilar(question, [], state.ideas, 4);
   if (similar.length) return { text: `Here are the community ideas most related to “${question}”.`, blocks: [{ type: 'ideas', items: similar.map((s) => s.idea) }] };
   return { text: 'I can answer questions about trends, ideas, people, opportunities and feedback in your community. Try one of the suggestions below.', blocks: [] };
+}
+
+// ---------------------------------------------------------------- action brief
+// One decision-ready summary per idea, assembled from real community data:
+// the problem, the evidence, who can help, what is still missing and the next practical step.
+const firstSentence = (t = '') => (t.match(/^.*?[.!?](\s|$)/)?.[0] || t).trim();
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+export function actionBrief(idea, state, intel) {
+  const stage = ideaStage(idea, state.projects);
+  const sig = intel.scored.get(idea.id);
+  const cluster = intel.clusterOf.get(idea.id);
+  const project = state.projects.find((p) => p.id === idea.projectId || p.ideaId === idea.id);
+  const helpers = idea.volunteers
+    .map((v) => ({ member: state.members.find((m) => m.id === v.memberId), note: v.note }))
+    .filter((h) => h.member)
+    .sort((a, b) => contributionScore(b.member) - contributionScore(a.member));
+  const needs = idea.needs.filter((n) => n !== 'Feedback');
+  const author = state.members.find((m) => m.id === idea.authorId);
+  // A need is covered if a volunteer or the author themselves has the matching role.
+  const missingNeeds = needs.filter((n) => !(author && roleMatchesNeed(author.role, n)) && !helpers.some((h) => roleMatchesNeed(h.member.role, n)));
+  const taken = new Set([idea.authorId, ...helpers.map((h) => h.member.id)]);
+  // People matching: members whose declared role fits a missing need, best contributors first.
+  const candidates = missingNeeds.flatMap((need) => state.members
+    .filter((m) => !taken.has(m.id) && roleMatchesNeed(m.role, need))
+    .sort((a, b) => contributionScore(b) - contributionScore(a))
+    .slice(0, 2)
+    .map((m) => { taken.add(m.id); return { member: m, need }; }));
+
+  const evidence = [
+    plural(idea.supports, 'supporter'),
+    plural(idea.commentsCount || 0, 'comment'),
+    helpers.length ? `${plural(helpers.length, 'member')} offered to help` : null,
+    cluster && cluster.requests > 1 ? `${cluster.requests} similar requests across ${plural(cluster.items.length, 'idea')}` : null,
+    sig ? `Signal Score ${sig.score}/100 (${sig.label})` : null,
+  ].filter(Boolean);
+
+  const quotes = (idea.comments || []).filter((c) => c.memberId !== 'creator').slice(-2)
+    .map((c) => ({ text: c.text, by: state.members.find((m) => m.id === c.memberId)?.name || 'A member' }));
+
+  const missing = [
+    ...missingNeeds.map((n) => `No ${n.toLowerCase()} has offered to help yet`),
+    !(idea.commentsCount > 0) ? 'No discussion yet — feedback will sharpen the idea' : null,
+    stage === 'in_progress' && project && !project.ownerId ? 'No owner assigned to the project' : null,
+  ].filter(Boolean);
+
+  const openTasks = project ? project.tasks.filter((t) => !t.done).length : 0;
+  let next;
+  if (stage === 'archived') next = { text: 'Archived. Restore it if it becomes relevant again.', action: 'restore' };
+  else if (stage === 'submitted') next = { text: 'Collect feedback: share it with the community and ask people to comment.', action: 'promote' };
+  else if (stage === 'discussing' && missingNeeds.length) next = { text: `Find a ${missingNeeds[0].toLowerCase()}${candidates[0] ? ` — ${candidates[0].member.name} matches` : ''}, then decide.`, action: candidates[0] ? 'invite' : 'select', member: candidates[0]?.member.id };
+  else if (stage === 'discussing') next = { text: 'The team is in place. Select it for a pilot.', action: 'select' };
+  else if (stage === 'selected') next = { text: 'Create the workspace: pick an owner, contributors and first tasks.', action: 'workspace' };
+  else if (stage === 'in_progress') next = openTasks ? { text: `${plural(openTasks, 'task')} open. Check in with the team and post an update.`, action: 'open-project' } : { text: 'All tasks are done. Mark the project complete.', action: 'open-project' };
+  else next = { text: 'Completed. Feature it and share the result with your audience.', action: 'promote' };
+
+  return {
+    stage,
+    problem: firstSentence(idea.description),
+    evidence, quotes,
+    helpers: helpers.slice(0, 4),
+    missing, candidates,
+    next,
+  };
 }
 
 // ---------------------------------------------------------------- utils

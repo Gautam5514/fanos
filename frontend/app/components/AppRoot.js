@@ -14,6 +14,7 @@ import Onboarding from './member/Onboarding';
 import { ModalRoot } from './modals';
 import { Logo, Toast } from './ui';
 import { AuthScreen, CreatorSetup } from './Auth';
+import PublicIdea from './PublicIdea';
 
 function Loading() {
   return <div className="flex min-h-screen items-center justify-center"><span className="animate-pulse"><Logo size={36} /></span></div>;
@@ -99,6 +100,7 @@ function App() {
       {view === 'member' && <MemberApp />}
       {view === 'auth' && <AuthScreen />}
       {view === 'creator-setup' && <CreatorSetup />}
+      {view === 'public-idea' && <PublicIdea key={state.publicIdeaId} id={state.publicIdeaId} />}
       {(view === 'creator' || view === 'member') && <ModalRoot />}
       <Toast toast={state.toast} onDone={() => dispatch({ type: 'TOAST', toast: null })} />
     </>
