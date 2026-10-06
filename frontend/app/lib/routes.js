@@ -9,6 +9,7 @@
 //   /ideas /people /communities /projects        both roles (rendered for the user's role)
 //   /communities/:id  /projects/:id              one community / project
 //   /i/:id                    public page of a featured idea (no sign-in needed)
+//   /join                     the creator's invite link → member signup (also /?join=1)
 //
 // parsePath() turns a URL into a NAV patch; pathFor() turns state back into a URL.
 
@@ -24,6 +25,7 @@ export function parsePath(pathname, role) {
   const [first, second] = parts;
   if (!first) return { view: 'landing' };
   if (first === 'auth') return { view: 'auth', authTab: second === 'signup' ? 'signup' : 'login' };
+  if (first === 'join') return { view: 'auth', authTab: 'signup', authRole: 'member', viaInvite: true };
   if (first === 'setup') return { view: 'creator-setup' };
   if (first === 'onboarding') return { view: 'onboarding' };
   if (first === 'i' && second) return { view: 'public-idea', publicIdeaId: second };

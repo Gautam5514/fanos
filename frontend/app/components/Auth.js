@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Trash2, Crown, UserPlus, Mail, Lock, User, KeyRound, ArrowLeft, Camera, PlaySquare, AtSign, Sparkles, Check, Zap, Users2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { CREATOR } from '../lib/seed';
@@ -35,6 +35,41 @@ function Field({ id, label, icon: Icon, trailing, invalid, ...props }) {
         <input id={id} aria-invalid={invalid || undefined} className={cx(field, trailing && 'pr-11', invalid && 'border-coral/60 focus:border-coral focus:ring-coral/10')} {...props} />
         {trailing}
       </div>
+    </div>
+  );
+}
+
+// Shown on signup when a follower arrives through the creator's invite link (/join):
+// who they're joining, loaded from the public community endpoint (no sign-in needed).
+function InvitePreviewCard() {
+  const [c, setC] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/public/community').then((r) => (r.ok ? r.json() : null)).then((d) => alive && setC(d)).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  if (!c) return <div className="mt-6 h-[92px] max-w-md animate-pulse rounded-2xl bg-line-2" aria-hidden="true" />;
+  const name = c.creator?.name || 'the creator';
+  const fmtN = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n));
+  return (
+    <div className="relative mt-6 max-w-md overflow-hidden rounded-2xl border border-accent/20 bg-white p-4 shadow-card">
+      <div aria-hidden="true" className="absolute -right-10 -top-12 h-28 w-28 rounded-full bg-gradient-to-br from-accent/20 to-coral/20 blur-2xl" />
+      <div className="relative flex items-center gap-3">
+        <Avatar name={name} size={44} />
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-accent">You’re invited to join</p>
+          <p className="truncate font-display text-lg font-semibold text-ink">{c.creator ? `${name.split(' ')[0]}’s community` : 'This community'}</p>
+          <p className="truncate text-xs text-muted">
+            {[c.creator?.handle, c.creator?.niche, ...(c.creator?.platforms || []).map((p) => `${fmtN(p.followers)} on ${p.name}`)].filter(Boolean).join(' · ') || 'Share ideas, build projects and find collaborators'}
+          </p>
+        </div>
+      </div>
+      <p className="relative mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-2">
+        <span><b className="font-semibold text-ink">{c.members}</b> member{c.members === 1 ? '' : 's'}</span>
+        <span><b className="font-semibold text-ink">{c.ideas}</b> idea{c.ideas === 1 ? '' : 's'}</span>
+        {c.communities.length > 0 && <span className="truncate">{c.communities.slice(0, 3).map((x) => `${x.emoji} ${x.name}`).join('  ')}</span>}
+      </p>
+      {!c.ready && <p className="relative mt-2 text-xs text-amber">The creator is still setting things up — you can already create your account.</p>}
     </div>
   );
 }
@@ -107,6 +142,8 @@ export function AuthScreen() {
             <p className="mt-2 max-w-sm text-[15px] text-ink-2">{isSignup ? 'Step into a community that builds with you — ideas, talent and projects in one place.' : 'Log in to your FanOS community and pick up where you left off.'}</p>
           </div>
 
+          {state.viaInvite && isSignup && <InvitePreviewCard />}
+
           {/* Segmented control with sliding thumb */}
           <div role="tablist" aria-label="Sign up or log in" className="relative mt-7 grid grid-cols-2 rounded-full bg-line-2 p-1">
             <span aria-hidden="true" className={cx('absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded-full bg-white shadow-sm transition-transform duration-300 ease-[cubic-bezier(.16,1,.3,1)]', isSignup ? 'translate-x-0' : 'translate-x-full')} />
@@ -115,7 +152,7 @@ export function AuthScreen() {
             ))}
           </div>
 
-          {isSignup && (
+          {isSignup && !state.viaInvite && (
             <fieldset className="mt-5">
               <legend className="mb-2 text-sm font-medium text-ink">I am a…</legend>
               <div role="radiogroup" aria-label="Account type" className="grid grid-cols-2 gap-2">

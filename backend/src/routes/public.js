@@ -1,4 +1,5 @@
 // Public, read-only data for shareable pages (no sign-in).
+//   GET /api/public/community → invite preview: creator profile, member count, community names.
 //   GET /api/public/ideas/:id → a FEATURED idea's public view, or 404.
 // Only ideas the creator has featured are exposed, and only safe fields:
 // members appear as first name + last initial, never emails or ids.
@@ -13,6 +14,21 @@ const shortName = (name = '') => {
   const [first, ...rest] = name.trim().split(/\s+/);
   return rest.length ? `${first} ${rest[rest.length - 1][0]}.` : first || 'A member';
 };
+
+// What a follower sees when they open the creator's invite link (before signing up).
+router.get('/community', async (req, res) => {
+  if (rateLimited(req, 'public', 120, 60_000)) return res.status(429).json({ error: 'Too many requests' });
+  const st = await loadState();
+  const c = st.creator || {};
+  res.set('Cache-Control', 'public, max-age=30');
+  res.json({
+    ready: !!c.claimed, // false until the creator finishes setting up their profile
+    creator: c.claimed ? { name: c.name || '', handle: c.handle || '', niche: c.niche || '', platforms: (c.platforms || []).map((p) => ({ name: p.name, followers: p.followers })) } : null,
+    members: st.members.length,
+    ideas: st.ideas.filter((i) => i.status !== 'archived').length,
+    communities: st.communities.map((x) => ({ name: x.name, emoji: x.emoji })),
+  });
+});
 
 router.get('/ideas/:id', async (req, res) => {
   if (rateLimited(req, 'public', 120, 60_000)) return res.status(429).json({ error: 'Too many requests' });

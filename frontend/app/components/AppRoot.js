@@ -38,8 +38,8 @@ function App() {
     parsedFor.current = key;
     if (!first && !role) return; // logged out: logout() already routes to the landing page
     if (first && new URLSearchParams(window.location.search).get('join') === '1') {
-      // Followers arrive via the creator's join link (/?join=1).
-      dispatch({ type: 'NAV', patch: { view: 'auth', authTab: 'signup', authRole: 'member', routed: true } });
+      // Followers arrive via the creator's invite link (/join, or the older /?join=1).
+      dispatch({ type: 'NAV', patch: { view: 'auth', authTab: 'signup', authRole: 'member', viaInvite: true, routed: true } });
       return;
     }
     const patch = parsePath(window.location.pathname, role);

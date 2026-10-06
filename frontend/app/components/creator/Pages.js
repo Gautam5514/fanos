@@ -222,9 +222,19 @@ export function OpportunitiesPage() {
     <div>
       <PageHeader icon={Briefcase} eyebrow="Opportunities inbox" title={`${high} high-priority opportunities`}
         sub={`${intel.opps.length.toLocaleString('en-US')} message${intel.opps.length === 1 ? '' : 's'} received. AI classified each one, removed spam and ranked what’s left by priority.`} />
-      <div className="mb-5 grid grid-cols-3 gap-3 sm:max-w-xl">
-        {[[intel.opps.length.toLocaleString('en-US'), 'Messages received', 'text-muted'], [real.length, 'Real opportunities', 'text-ink'], [high, 'High priority', 'text-accent']].map(([n, l, c]) => (
-          <div key={l} className="card p-3"><p className={cx('font-display text-2xl font-semibold', c)}>{n}</p><p className="text-xs text-muted">{l}</p></div>
+      <div className="mb-5 grid grid-cols-3 gap-3 sm:max-w-2xl">
+        {[
+          { n: intel.opps.length.toLocaleString('en-US'), l: 'Messages received', chip: 'bg-line-2 text-ink-2', icon: Mail },
+          { n: real.length, l: 'Real opportunities', chip: 'bg-sky-soft text-sky', icon: BadgeCheck },
+          { n: high, l: 'High priority', chip: 'bg-accent-soft text-accent', icon: Flame },
+        ].map((s) => (
+          <div key={s.l} className="card flex flex-col p-4">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-display text-[26px] font-semibold leading-none text-ink">{s.n}</p>
+              <span className={cx('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', s.chip)}><s.icon className="h-4 w-4" aria-hidden="true" /></span>
+            </div>
+            <p className="mt-2.5 text-xs font-medium text-ink-2">{s.l}</p>
+          </div>
         ))}
       </div>
       <div className="grid gap-5 lg:grid-cols-[220px_1fr] xl:grid-cols-[220px_minmax(0,1fr)_420px]">
@@ -420,7 +430,7 @@ export function CommunitiesPage({ go }) {
         {state.communities.map((c) => {
           const ideas = state.ideas.filter((i) => i.communityId === c.id);
           const top = [...ideas].sort((a, b) => intel.scored.get(b.id).score - intel.scored.get(a.id).score)[0];
-          const contributors = [...state.members].filter((m) => m.communities.includes(c.id)).sort((a, b) => contributionScore(b) - contributionScore(a)).slice(0, 5);
+          const contributors = [...state.members].filter((m) => (m.communities || []).includes(c.id)).sort((a, b) => contributionScore(b) - contributionScore(a)).slice(0, 5);
           return (
             <article key={c.id} onClick={() => dispatch({ type: 'NAV', patch: { communityId: c.id, communityTab: 'feed' } })} className="card card-hover flex cursor-pointer flex-col p-5">
               <div className="flex items-start justify-between">

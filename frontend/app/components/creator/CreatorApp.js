@@ -76,7 +76,7 @@ export default function CreatorApp() {
 
   const ask = (q) => { setCopilotOpen(true); send(q); };
   const copyInvite = async () => {
-    try { await navigator.clipboard.writeText(`${window.location.origin}/?join=1`); dispatch({ type: 'TOAST', toast: { text: 'Invite link copied — share it with your followers' } }); } catch { /* ignore */ }
+    try { await navigator.clipboard.writeText(`${window.location.origin}/join`); dispatch({ type: 'TOAST', toast: { text: 'Invite link copied — share it with your followers' } }); } catch { /* ignore */ }
   };
 
   const renderSidebar = (mini) => (
@@ -188,7 +188,7 @@ export default function CreatorApp() {
 // Sidebar row: copy the join link followers use to sign up.
 function InviteCard() {
   const [copied, setCopied] = useState(false);
-  const copy = async () => { try { await navigator.clipboard.writeText(`${window.location.origin}/?join=1`); } catch { /* ignore */ } setCopied(true); setTimeout(() => setCopied(false), 1500); };
+  const copy = async () => { try { await navigator.clipboard.writeText(`${window.location.origin}/join`); } catch { /* ignore */ } setCopied(true); setTimeout(() => setCopied(false), 1500); };
   return (
     <div className="flex items-center justify-between gap-2 rounded-full bg-white/[.06] py-1.5 pl-3.5 pr-1.5 ring-1 ring-white/10">
       <span className="text-[13px] font-medium text-white/85">Invite fans</span>

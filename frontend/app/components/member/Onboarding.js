@@ -45,7 +45,7 @@ export default function Onboarding() {
   const noCommunities = state.communities.length === 0;
   const communities = joined ?? matched;
   const steps = ['Join', 'Interests', 'Contribute', 'Goals', 'Communities'];
-  const canNext = [name.trim().length >= 2, interests.length > 0 && name.trim().length >= 2, !!role, goals.length > 0, communities.length > 0 || noCommunities][step];
+  const canNext = [name.trim().length >= 2, interests.length > 0 && name.trim().length >= 2, !!role, goals.length > 0, true][step]; // communities are optional: members can join them later
 
   const finish = () => dispatch({ type: 'ONBOARD', ...(state.user ? { memberId: `m_u_${state.user.id}` } : {}), profile: { name: name.trim().slice(0, 40), interests, role, skills, goals }, communities });
 
@@ -137,6 +137,7 @@ export default function Onboarding() {
               <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.12em] text-accent"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> AI matched</p>
               <h1 className="mt-1 font-display text-3xl font-semibold text-ink sm:text-4xl">Your <span className="ai-gradient-animated">communities</span></h1>
               <p className="mb-6 mt-2 text-ink-2">{noCommunities ? `${CREATOR.firstName === 'your creator' ? 'Your creator' : CREATOR.firstName} has not created any communities yet. You can join them later from the Communities page.` : `Based on your interests and skills, we picked ${matched.length} communit${matched.length === 1 ? 'y' : 'ies'}. Adjust anytime.`}</p>
+              {!noCommunities && communities.length === 0 && <p className="-mt-4 mb-5 rounded-xl bg-amber-soft px-3 py-2 text-sm text-ink">None of these matched your interests. Tap one to join, or continue and join later from Communities.</p>}
               <div className="grid gap-2 sm:grid-cols-2">
                 {state.communities.map((c) => {
                   const on = communities.includes(c.id);

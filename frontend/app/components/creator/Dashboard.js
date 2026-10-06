@@ -56,7 +56,7 @@ export default function Dashboard({ go, ask }) {
             </div>
           </div>
 
-          <ol aria-label="Noise to signal" className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-x-9">
+          <ol aria-label="Noise to signal" className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-x-11">
             {[
               { n: totalComments.toLocaleString('en-US'), l: 'Comments', s: `${totalSupports.toLocaleString('en-US')} supports`, icon: MessageSquareText },
               { n: state.ideas.length.toLocaleString('en-US'), l: 'Ideas shared', s: 'by your members', icon: Lightbulb },
@@ -70,7 +70,7 @@ export default function Dashboard({ go, ask }) {
                 </div>
                 <p className="mt-1.5 text-[13px] font-medium leading-tight">{x.l}</p>
                 <p className={cx('truncate text-[10px]', x.hl ? 'text-white/80' : 'text-white/45')}>{x.s}</p>
-                {i < 3 && <DrawnArrow variant="wave" tone="light" delay={0.3 + i * 0.3} className="absolute -right-[42px] top-1/2 z-10 hidden h-6 w-10 -translate-y-1/2 sm:block" />}
+                {i < 3 && <DrawnArrow variant="wave" tone="light" delay={0.3 + i * 0.3} className="absolute -right-[46px] top-1/2 z-10 hidden h-5 w-11 -translate-y-1/2 sm:block" />}
               </li>
             ))}
           </ol>
@@ -78,24 +78,30 @@ export default function Dashboard({ go, ask }) {
       </section>
 
       {/* KPIs */}
-      <section aria-label="Community metrics" className="grid grid-cols-2 gap-3 sm:gap-x-11 lg:grid-cols-4">
+      <section aria-label="Community metrics" className="relative grid grid-cols-2 gap-3 sm:gap-x-11 lg:grid-cols-4">
         {[
           { label: 'Members', value: totalMembers.toLocaleString('en-US'), sub: totalMembers ? `${joinedThisWeek} joined this week` : 'share your invite link', icon: Users, to: 'people', tile: 'tile-accent', chip: 'bg-accent-soft text-accent' },
           { label: 'Communities', value: state.communities.length, sub: 'interest-based', icon: Boxes, to: 'communities', tile: 'tile-sky', chip: 'bg-sky-soft text-sky' },
           { label: 'Collaboration requests', value: collabRequests, sub: `${rising} rising contributors`, icon: TrendingUp, to: 'ideas', tile: 'tile-mint', chip: 'bg-mint-soft text-mint' },
           { label: 'Opportunities', value: realOpps.length, sub: `${high.length} high-priority`, icon: Inbox, to: 'opportunities', tile: 'tile-coral', chip: 'bg-coral-soft text-coral' },
-        ].map((k, i) => (
-          <button key={k.label} onClick={() => go(k.to)} className={cx('tile group relative px-3.5 py-3 text-left', k.tile)}>
-            <div className="relative flex items-center gap-3">
-              <span className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition group-hover:scale-110', k.chip)}><k.icon className="h-4 w-4" aria-hidden="true" /></span>
-              <div className="min-w-0">
-                <p className="font-display text-[22px] font-semibold leading-none text-ink">{k.value}</p>
-                <p className="mt-1 truncate text-xs font-medium text-ink-2">{k.label}</p>
-              </div>
+        ].map((k) => (
+          <button key={k.label} onClick={() => go(k.to)} className={cx('tile group relative flex flex-col px-4 py-3.5 text-left', k.tile)}>
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-display text-[30px] font-semibold leading-none text-ink">{k.value}</p>
+              <span className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition group-hover:scale-110', k.chip)}><k.icon className="h-[18px] w-[18px]" aria-hidden="true" /></span>
             </div>
-            <p className="relative mt-2 truncate text-[11px] text-muted">{k.sub}</p>
-            {i < 3 && <DrawnArrow variant="wave" delay={1.3 + i * 0.3} className="absolute -right-[46px] top-1/2 z-10 hidden h-7 w-11 -translate-y-1/2 lg:block" />}
+            <p className="mt-2.5 text-sm font-semibold text-ink">{k.label}</p>
+            <p className="mt-1 truncate text-[11px] text-muted">{k.sub}</p>
+            <span className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-muted opacity-0 transition group-hover:text-accent group-hover:opacity-100">
+              View <ArrowRight className="h-3 w-3" aria-hidden="true" />
+            </span>
           </button>
+        ))}
+        {/* Arrows between KPI cards — overlaid so .tile's overflow:hidden can't clip them. */}
+        {[0, 1, 2].map((i) => (
+          <DrawnArrow key={i} variant="wave" delay={1.3 + i * 0.3}
+            className="absolute top-1/2 z-10 hidden h-6 w-12 -translate-x-1/2 -translate-y-1/2 lg:block"
+            style={{ left: `calc(${(i + 1) * 25}% )` }} />
         ))}
       </section>
 

@@ -134,7 +134,7 @@ Open **http://localhost:3000**. The API runs at **http://localhost:4000**; its h
 ### 5. Create your community
 
 1. Register as a **Creator** and complete the creator profile. The first creator account claims the community; subsequent creator registrations require the configured access code.
-2. Share the dashboard's member join link: `<frontend-url>/?join=1`.
+2. Share the dashboard's member join link: `<frontend-url>/join` (the older `/?join=1` still works).
 3. Members register, complete onboarding, and join communities.
 4. Review submissions, select an idea, and create a project with an owner, contributors, and tasks.
 
@@ -233,7 +233,7 @@ flowchart LR
 | `/communities/:id`, `/projects/:id` | Community and project details. |
 | `/i/:id` | Public featured idea page. |
 
-Protected pages send signed-out visitors to login. Role-specific pages redirect users to their appropriate home. The member invitation URL `/?join=1` opens member registration.
+Protected pages send signed-out visitors to login. Role-specific pages redirect users to their appropriate home. The member invitation URL `/join` (or the older `/?join=1`) opens member registration with a preview of the community.
 
 ## Development
 
@@ -262,7 +262,7 @@ Initialize the Supabase schema before using the deployed application, then deplo
 | Configuration | Supabase keys and optional LLM settings | `BACKEND_URL` set to the deployed API URL |
 | Health check | `/health` | `/` |
 
-The frontend can run on a Next.js-capable host; the backend needs a Node.js 22+ or Docker host. After deployment, verify login and member registration through the frontend URL, then share `<frontend-url>/?join=1`.
+The frontend can run on a Next.js-capable host; the backend needs a Node.js 22+ or Docker host. After deployment, verify login and member registration through the frontend URL, then share `<frontend-url>/join` (the older `/?join=1` still works).
 
 ## Troubleshooting
 
