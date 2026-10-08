@@ -133,7 +133,7 @@ Open **http://localhost:3000**. The API runs at **http://localhost:4000**; its h
 
 ### 5. Create your community
 
-1. Register as a **Creator** and complete the creator profile. The first creator account claims the community; subsequent creator registrations require the configured access code.
+1. Register as a **Creator** and complete the creator profile. Any creator account can register directly—no access code required.
 2. Share the dashboard's member join link: `<frontend-url>/join` (the older `/?join=1` still works).
 3. Members register, complete onboarding, and join communities.
 4. Review submissions, select an idea, and create a project with an owner, contributors, and tasks.
@@ -148,7 +148,6 @@ Open **http://localhost:3000**. The API runs at **http://localhost:4000**; its h
 | `SUPABASE_PUBLISHABLE_KEY` | Yes | Publishable key used for authentication. |
 | `SUPABASE_SECRET_KEY` | Yes | Server-only key for database access and auth administration. |
 | `PORT` | No | API port; defaults to `4000`. |
-| `CREATOR_ACCESS_CODE` | No | Enables additional creator registrations after the first account. |
 | `OPENAI_API_KEY` | No | Enables optional LLM features. |
 | `OPENAI_MODEL` | No | Overrides the backend's default model. |
 | `OPENAI_BASE_URL` | No | Points LLM requests at an OpenAI-compatible endpoint. |
@@ -271,7 +270,6 @@ The frontend can run on a Next.js-capable host; the backend needs a Node.js 22+ 
 | “Supabase is not configured” | Set all three required Supabase values in `backend/.env` and restart the API. |
 | “Database tables are missing” | Run the SQL migration in the correct Supabase project. |
 | Frontend API requests fail | Confirm the backend is running and `BACKEND_URL` matches its address; rebuild after production configuration changes. |
-| Additional creator registration is blocked | Configure `CREATOR_ACCESS_CODE` on the backend. |
 | LLM generation is unavailable | Check the optional API key, model, and base URL. Built-in analysis remains available without an LLM key. |
 
 ## Security and current limitations

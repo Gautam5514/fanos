@@ -75,7 +75,6 @@ export async function printStartupReport(port) {
   // The follower invite link always works; it needs no configuration.
   const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
   row(dbOk ? OK : FAIL, 'Invite link', dbOk ? `${c.cyan(`${appUrl}/join`)} — followers sign up as members` : 'needs the database');
-  row(OFF, 'Co-creator code', process.env.CREATOR_ACCESS_CODE ? 'set — a second creator (admin) account is allowed' : 'optional — only for a 2nd creator/admin account, not followers');
   row(process.env.FEEDBACK_ADMIN_TOKEN ? OK : OFF, 'Admin token', process.env.FEEDBACK_ADMIN_TOKEN ? 'set' : 'not set');
 
   console.log('');

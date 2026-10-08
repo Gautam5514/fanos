@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Trash2, Crown, UserPlus, Mail, Lock, User, KeyRound, ArrowLeft, Camera, PlaySquare, AtSign, Sparkles, Check, Zap, Users2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Trash2, Crown, UserPlus, Mail, Lock, User, ArrowLeft, Camera, PlaySquare, AtSign, Sparkles, Check, Zap, Users2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { CREATOR } from '../lib/seed';
 import { Avatar, Button, Logo, cx } from './ui';
@@ -79,7 +79,7 @@ export function AuthScreen() {
   // The tab lives in the store so the URL (/auth/login ↔ /auth/signup) and Back button stay in sync.
   const tab = state.authTab === 'signup' ? 'signup' : 'login';
   const [role, setRole] = useState(state.authRole || 'member');
-  const [f, setF] = useState({ name: '', email: '', password: '', creatorCode: '' });
+  const [f, setF] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [showPw, setShowPw] = useState(false);
@@ -211,10 +211,7 @@ export function AuthScreen() {
             </div>
 
             {isSignup && role === 'creator' && (
-              <div>
-                <Field id="a-code" label="Creator access code" icon={KeyRound} value={f.creatorCode} onChange={set('creatorCode')} maxLength={100} placeholder="Only if a creator already exists" />
-                <p className="mt-1 text-xs text-muted">The first creator account claims this community — no code needed.</p>
-              </div>
+              <p className="text-xs text-muted">You’ll set up your community profile right after you create your account.</p>
             )}
             {error && <p role="alert" className="rounded-xl bg-coral-soft px-3 py-2 text-sm text-coral">{error}</p>}
             <Button type="submit" variant="primary" size="lg" arrow className="w-full" disabled={busy || !canSubmit}>{busy ? 'Please wait…' : isSignup ? 'Create account' : 'Log in'}</Button>

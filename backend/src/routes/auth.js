@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { adminDb, authClient, supabaseConfigured } from '../lib/supabase.js';
-import { canBecomeCreator, createProfile, EMAIL_RE, fromProfile, getProfile, getUser, passwordWeakness, publicUser, rateLimited, rateLimitedKey } from '../lib/auth.js';
+import { createProfile, EMAIL_RE, fromProfile, getProfile, getUser, passwordWeakness, publicUser, rateLimited, rateLimitedKey } from '../lib/auth.js';
 import { readJson } from '../lib/http.js';
 
 const router = Router();
@@ -26,9 +26,6 @@ router.post('/signup', async (req, res) => {
   const weak = passwordWeakness(password);
   if (weak) return res.status(400).json({ error: weak });
   if (name.length < 2) return res.status(400).json({ error: 'Enter your name' });
-  if (role === 'creator' && !(await canBecomeCreator(String(b?.creatorCode || '')))) {
-    return res.status(403).json({ error: 'This community already has a creator. Ask them for the creator access code.' });
-  }
 
   const { data: created, error } = await adminDb().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name } });
   if (error) {

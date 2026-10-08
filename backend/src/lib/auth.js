@@ -1,6 +1,5 @@
 // Accounts & sessions via Supabase Auth (sessions live in Supabase-managed httpOnly cookies).
 // Roles and the member link are stored in public.profiles.
-import crypto from 'crypto';
 import { adminDb, authClient, checkDbError } from './supabase.js';
 
 export const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
@@ -55,15 +54,6 @@ export async function getUser(req, res) {
   if (error || !data?.user) return null;
   const p = await getProfile(data.user.id);
   return p ? fromProfile(p) : null;
-}
-
-// The first creator account claims the community. More creator accounts need CREATOR_ACCESS_CODE.
-export async function canBecomeCreator(code) {
-  const { count, error } = await adminDb().from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'creator');
-  checkDbError(error);
-  if (!count) return true;
-  const expected = process.env.CREATOR_ACCESS_CODE;
-  return !!(expected && code && code.length === expected.length && crypto.timingSafeEqual(Buffer.from(code), Buffer.from(expected)));
 }
 
 export const clientIp = (req) => req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'local';
