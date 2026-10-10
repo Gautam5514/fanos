@@ -19,7 +19,7 @@ export function assertConfigured() {
 // PostgREST "table not found" → the SQL migration has not been run yet.
 export function checkDbError(error) {
   if (!error) return;
-  if (error.code === 'PGRST205' || error.code === '42P01') throw new SetupError('Database tables are missing — run backend/supabase/migrations/001_fanos.sql in the Supabase SQL Editor.');
+  if (error.code === 'PGRST205' || error.code === '42P01') throw new SetupError('Database tables are missing — run backend/supabase/migrations/001_fanos.sql then 002_multitenant.sql in the Supabase SQL Editor.');
   throw new Error(`Database error: ${error.message}`);
 }
 

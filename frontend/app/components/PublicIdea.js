@@ -1,7 +1,7 @@
 'use client';
 
-// Public page for a featured idea: /i/:id. Readable without an account so the creator can
-// promote it anywhere. Data comes from GET /api/public/ideas/:id (featured ideas only).
+// Public page for a featured idea: /i/:creatorId/:id. Readable without an account so the creator
+// can promote it anywhere. Data comes from GET /api/public/ideas/:creatorId/:id (featured only).
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Check, Handshake, Heart, MessagesSquare, Rocket, Share2, Users } from 'lucide-react';
 import { useStore } from '../lib/store';
@@ -9,25 +9,26 @@ import { Avatar, Bar, Button, Chip, Logo } from './ui';
 import { Aurora } from './chrome';
 import { StageChip, StageTrack } from './shared';
 
-export default function PublicIdea({ id }) {
+export default function PublicIdea({ id, communityId }) {
   const { state, dispatch } = useStore();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    if (!communityId) return undefined;
     let alive = true;
-    fetch(`/api/public/ideas/${encodeURIComponent(id)}`)
+    fetch(`/api/public/ideas/${encodeURIComponent(communityId)}/${encodeURIComponent(id)}`)
       .then(async (r) => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || 'Not found'); return d; })
       .then((d) => alive && setData(d))
       .catch((e) => alive && setError(e.message));
     return () => { alive = false; };
-  }, [id]);
+  }, [id, communityId]);
 
   const user = state.user;
   const creatorName = data?.creator?.name || 'the creator';
   const first = creatorName.split(' ')[0];
-  const join = () => dispatch({ type: 'NAV', patch: { view: 'auth', authTab: 'signup', authRole: 'member' } });
+  const join = () => dispatch({ type: 'NAV', patch: { view: 'auth', authTab: 'signup', authRole: 'member', viaInvite: true, inviteCommunity: communityId } });
   const openInApp = () => dispatch({ type: 'NAV', patch: user.role === 'creator'
     ? { view: 'creator', creatorPage: 'ideas', modal: { type: 'idea', id } }
     : { view: 'member', memberPage: 'ideas', modal: { type: 'idea', id } } });
@@ -55,13 +56,13 @@ export default function PublicIdea({ id }) {
     </header>
   );
 
-  if (error || !data) {
+  if (error || !communityId || !data) {
     return (
       <div className="relative min-h-screen bg-paper">
         <Aurora className="h-[420px]" />
         {header}
         <main className="relative mx-auto flex max-w-xl flex-col items-center px-6 py-28 text-center">
-          {error ? (
+          {error || !communityId ? (
             <>
               <h1 className="font-display text-3xl font-semibold text-ink">This idea isn’t public</h1>
               <p className="mt-2 text-ink-2">It may have been unfeatured or archived by the creator.</p>

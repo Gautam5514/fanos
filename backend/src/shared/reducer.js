@@ -98,7 +98,7 @@ const TOPIC_MAP = { 'AI Agents': 'AI Agents', Automation: 'Automation', Monetiza
 export function reducer(state, a) {
   switch (a.type) {
     case 'HYDRATE': return { ...state, ...(a.state || {}), toast: null, ready: true };
-    case 'SYNC': return { ...state, ...a.shared, ...(a.supported ? { supported: a.supported } : {}) };
+    case 'SYNC': return { ...state, ...a.shared, ...(a.supported ? { supported: a.supported } : {}), ...(a.needsCommunity !== undefined ? { needsCommunity: a.needsCommunity } : {}) };
     case 'RESET': return { ...state, ...emptyShared(), ...(a.keepMembers ? { members: a.keepMembers } : {}), view: state.view, supported: {}, toast: toast('Community content cleared — member accounts kept') };
     case 'NAV': return { ...state, ...a.patch };
     case 'TOAST': return { ...state, toast: a.toast ? { id: Date.now(), ...a.toast } : null };

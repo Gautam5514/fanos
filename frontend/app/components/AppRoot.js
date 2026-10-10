@@ -100,7 +100,7 @@ function App() {
       {view === 'member' && <MemberApp />}
       {view === 'auth' && <AuthScreen />}
       {view === 'creator-setup' && <CreatorSetup />}
-      {view === 'public-idea' && <PublicIdea key={state.publicIdeaId} id={state.publicIdeaId} />}
+      {view === 'public-idea' && <PublicIdea key={state.publicIdeaId} id={state.publicIdeaId} communityId={state.publicIdeaCommunity} />}
       {(view === 'creator' || view === 'member') && <ModalRoot />}
       <Toast toast={state.toast} onDone={() => dispatch({ type: 'TOAST', toast: null })} />
     </>

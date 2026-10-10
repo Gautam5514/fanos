@@ -96,6 +96,17 @@ function MemberHome({ me, go }) {
           <p className="mt-1 text-ink-2">Here’s what’s happening in {CREATOR.firstName}’s community.</p>
         </section>
 
+        {state.ideas.length === 0 && (
+          <section className="card animate-fade-up overflow-hidden p-0">
+            <div className="relative bg-gradient-to-br from-accent to-[#9b4bf0] p-6 text-white">
+              <p className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.12em]"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Be the first</p>
+              <h2 className="mt-3 font-display text-2xl font-semibold">No ideas here yet — start the conversation</h2>
+              <p className="mt-1 max-w-md text-sm text-white/80">Share something you want {CREATOR.firstName} to build, teach or launch. Other members vote and help, and the best ideas become real projects.</p>
+              <Button variant="secondary" icon={Plus} className="mt-4 bg-white text-ink hover:bg-white/90" onClick={() => open.share()}>Share the first idea</Button>
+            </div>
+          </section>
+        )}
+
         {invites.length > 0 && (
           <section aria-label="Invitations" className="space-y-2">
             {invites.map((inv) => {
@@ -314,7 +325,7 @@ function MemberProfile({ me }) {
   return (
     <div className="mx-auto max-w-3xl">
       <div className="card overflow-hidden">
-        <div className="h-24 bg-gradient-to-r from-accent via-[#9b4bf0] to-coral" />
+        <div className="h-24 bg-gradient-to-r from-accent to-[#9b4bf0]" />
         <div className="-mt-10 p-6">
           <Avatar name={me.name} size={80} ring />
           <h1 className="mt-3 font-display text-2xl font-semibold text-ink">{me.name}</h1>

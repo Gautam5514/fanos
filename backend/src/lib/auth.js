@@ -25,7 +25,7 @@ export function passwordWeakness(pw) {
 }
 
 export function publicUser(u) {
-  return u ? { id: u.id, email: u.email, name: u.name, role: u.role, memberId: u.memberId || null, provider: u.provider } : null;
+  return u ? { id: u.id, email: u.email, name: u.name, role: u.role, memberId: u.memberId || null, communityId: u.communityId || null, provider: u.provider } : null;
 }
 
 export async function getProfile(id) {
@@ -34,8 +34,13 @@ export async function getProfile(id) {
   return data;
 }
 
-export async function createProfile({ id, email, name, role, provider }) {
-  const { data, error } = await adminDb().from('profiles').insert({ id, email, name, role, provider }).select('*').single();
+// Creators own their own community (community_id = their own id). Members pass the creator
+// community they are joining. Email signups without a community stay unassigned until join.
+export async function createProfile({ id, email, name, role, provider, communityId }) {
+  const community_id = role === 'creator' ? id : communityId || null;
+  const { data, error } = await adminDb().from('profiles')
+    .insert({ id, email, name, role, provider, community_id })
+    .select('*').single();
   checkDbError(error);
   return data;
 }
@@ -45,7 +50,25 @@ export async function setMemberId(userId, memberId) {
   checkDbError(error);
 }
 
-export const fromProfile = (p) => ({ id: p.id, email: p.email, name: p.name, role: p.role, memberId: p.member_id, provider: p.provider });
+// Attach a member account to a creator's community (used when a follower joins via an invite link).
+export async function setCommunityId(userId, communityId) {
+  const { error } = await adminDb().from('profiles').update({ community_id: communityId }).eq('id', userId);
+  checkDbError(error);
+}
+
+// Supabase ids (auth.users / profiles) are UUIDs. Guard so a malformed id (e.g. a bad
+// invite link) is treated as "not found" instead of hitting Postgres with an invalid-uuid query.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// A community exists only if its creator profile does. Returns the creator profile or null.
+export async function getCommunityCreator(communityId) {
+  if (!communityId || !UUID_RE.test(String(communityId))) return null;
+  const { data, error } = await adminDb().from('profiles').select('id, name, role').eq('id', communityId).eq('role', 'creator').maybeSingle();
+  checkDbError(error);
+  return data;
+}
+
+export const fromProfile = (p) => ({ id: p.id, email: p.email, name: p.name, role: p.role, memberId: p.member_id, communityId: p.community_id, provider: p.provider });
 
 // Current signed-in user (with role) or null.
 export async function getUser(req, res) {

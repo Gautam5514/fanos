@@ -2,6 +2,7 @@
 // database tables, community data and optional features. Never prints secret values.
 import { adminDb, supabaseConfigured } from './supabase.js';
 import { llmEnabled } from './llm.js';
+import { youtubeEnabled } from './youtube.js';
 
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
 const paint = (code) => (s) => (useColor ? `\x1b[${code}m${s}\x1b[0m` : s);
@@ -30,7 +31,7 @@ async function checkDatabase() {
   const [profiles, creatorsRes, state, feedback] = await Promise.all([
     q(db.from('profiles').select('id', { count: 'exact', head: true })),
     q(db.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'creator')),
-    q(db.from('app_state').select('version, data').eq('id', 1).maybeSingle()),
+    q(db.from('app_state').select('creator_id', { count: 'exact', head: true })),
     q(db.from('creator_feedback').select('id', { count: 'exact', head: true })),
   ]);
   const ms = Date.now() - started;
@@ -44,18 +45,15 @@ async function checkDatabase() {
 
   const missing = [['profiles', profiles], ['app_state', state], ['creator_feedback', feedback]].filter(([, r]) => isMissing(r)).map(([t]) => t);
   if (missing.length) {
-    row(FAIL, 'Tables', `missing ${missing.join(', ')} — run backend/supabase/migrations/001_fanos.sql`);
+    row(FAIL, 'Tables', `missing ${missing.join(', ')} — run backend/supabase/migrations/002_multitenant.sql`);
     return false;
   }
   row(OK, 'Tables', 'profiles, app_state, creator_feedback');
 
   const accounts = profiles.count ?? 0, creators = creatorsRes.count ?? 0;
-  const d = state.data?.data || {};
-  const n = (k) => (Array.isArray(d[k]) ? d[k].length : 0);
-  row(OK, 'Community data', state.data
-    ? `${accounts} accounts (${creators} creator) · ${n('members')} members · ${n('communities')} communities · ${n('ideas')} ideas · ${n('projects')} projects`
-    : `${accounts} accounts · empty community (created on first request)`);
-  if (!creators) row(WARN, 'Creator', 'no creator yet — the first creator signup claims the community');
+  const communities = state.count ?? 0; // one app_state document per creator community
+  row(OK, 'Community data', `${accounts} accounts (${creators} creator${creators === 1 ? '' : 's'}) · ${communities} community document${communities === 1 ? '' : 's'}`);
+  if (!creators) row(WARN, 'Creator', 'no creator yet — each creator signup gets its own community');
   return true;
 }
 
@@ -72,9 +70,12 @@ export async function printStartupReport(port) {
   row(llmEnabled() ? OK : OFF, 'AI (LLM)', llmEnabled()
     ? `${process.env.OPENAI_MODEL || 'gpt-4o-mini'} via ${host(process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1')}`
     : 'off — built-in engine (set OPENAI_API_KEY to enable)');
+  row(youtubeEnabled() ? OK : OFF, 'YouTube lookup', youtubeEnabled()
+    ? 'on — creators can auto-fill real subscriber counts'
+    : 'off — manual entry (set YOUTUBE_API_KEY to enable)');
   // The follower invite link always works; it needs no configuration.
   const appUrl = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
-  row(dbOk ? OK : FAIL, 'Invite link', dbOk ? `${c.cyan(`${appUrl}/join`)} — followers sign up as members` : 'needs the database');
+  row(dbOk ? OK : FAIL, 'Invite link', dbOk ? `${c.cyan(`${appUrl}/join/<creatorId>`)} — each creator shares their own link (copy it from the dashboard)` : 'needs the database');
   row(process.env.FEEDBACK_ADMIN_TOKEN ? OK : OFF, 'Admin token', process.env.FEEDBACK_ADMIN_TOKEN ? 'set' : 'not set');
 
   console.log('');

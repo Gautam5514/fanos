@@ -4,6 +4,7 @@ import express from 'express';
 import authRoutes from './routes/auth.js';
 import communityRoutes from './routes/community.js';
 import aiRoutes from './routes/ai.js';
+import integrationsRoutes from './routes/integrations.js';
 import feedbackRoutes from './routes/feedback.js';
 import publicRoutes from './routes/public.js';
 
@@ -28,6 +29,7 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api', communityRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/integrations', integrationsRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/public', publicRoutes);
 

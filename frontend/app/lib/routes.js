@@ -8,8 +8,8 @@
 //   /home /profile                               member only
 //   /ideas /people /communities /projects        both roles (rendered for the user's role)
 //   /communities/:id  /projects/:id              one community / project
-//   /i/:id                    public page of a featured idea (no sign-in needed)
-//   /join                     the creator's invite link → member signup (also /?join=1)
+//   /i/:creatorId/:id         public page of a featured idea (no sign-in needed)
+//   /join/:creatorId          a creator's invite link → member signup
 //
 // parsePath() turns a URL into a NAV patch; pathFor() turns state back into a URL.
 
@@ -22,13 +22,15 @@ export const APP_VIEWS = ['creator', 'member', 'onboarding', 'creator-setup'];
 // `role` is the signed-in user's role, if known; shared pages open in that role's app.
 export function parsePath(pathname, role) {
   const parts = pathname.replace(/\/+$/, '').split('/').filter(Boolean).map(decodeURIComponent);
-  const [first, second] = parts;
+  const [first, second, third] = parts;
   if (!first) return { view: 'landing' };
   if (first === 'auth') return { view: 'auth', authTab: second === 'signup' ? 'signup' : 'login' };
-  if (first === 'join') return { view: 'auth', authTab: 'signup', authRole: 'member', viaInvite: true };
+  // Invite link carries the creator (community) id: /join/:creatorId.
+  if (first === 'join') return { view: 'auth', authTab: 'signup', authRole: 'member', viaInvite: true, inviteCommunity: second || null };
   if (first === 'setup') return { view: 'creator-setup' };
   if (first === 'onboarding') return { view: 'onboarding' };
-  if (first === 'i' && second) return { view: 'public-idea', publicIdeaId: second };
+  // Public idea: /i/:creatorId/:id (creatorId scopes the community).
+  if (first === 'i' && second && third) return { view: 'public-idea', publicIdeaCommunity: second, publicIdeaId: third };
   if (CREATOR_ONLY.includes(first)) return { view: 'creator', creatorPage: first };
   if (MEMBER_ONLY.includes(first)) return { view: 'member', memberPage: first };
   if (SHARED.includes(first)) {
@@ -46,7 +48,7 @@ export function pathFor(state, view) {
     case 'auth': return `/auth/${state.authTab === 'signup' ? 'signup' : 'login'}`;
     case 'creator-setup': return '/setup';
     case 'onboarding': return '/onboarding';
-    case 'public-idea': return `/i/${encodeURIComponent(state.publicIdeaId || '')}`;
+    case 'public-idea': return `/i/${encodeURIComponent(state.publicIdeaCommunity || '')}/${encodeURIComponent(state.publicIdeaId || '')}`;
     case 'creator': {
       const page = state.creatorPage || 'dashboard';
       if (page === 'communities' && state.communityId) return `/communities/${encodeURIComponent(state.communityId)}`;

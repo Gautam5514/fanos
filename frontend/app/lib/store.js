@@ -39,8 +39,13 @@ export function StoreProvider({ children }) {
 
   const syncFrom = useCallback((snap) => {
     if (!snap || snap.unchanged) return;
+    // A member who has not joined a community yet: no shared document to show.
+    if (snap.needsCommunity || !snap.shared) {
+      rawDispatch({ type: 'NAV', patch: { needsCommunity: true } });
+      return;
+    }
     version.current = snap.version || version.current;
-    rawDispatch({ type: 'SYNC', shared: withAges(snap.shared), supported: snap.supported });
+    rawDispatch({ type: 'SYNC', shared: withAges(snap.shared), supported: snap.supported, needsCommunity: false });
   }, []);
 
   const pull = useCallback(async (force = false) => {
@@ -123,6 +128,14 @@ export function StoreProvider({ children }) {
       return d.user;
     },
     async login(body) { const d = await api('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }); await enterLive(d.user, { fromAuth: true }); return d.user; },
+    // Attach a member (who has no community yet) to a creator's community via an invite link,
+    // then re-enter the app so their community data loads.
+    async joinCommunity(community) {
+      const d = await api('/api/auth/join', { method: 'POST', body: JSON.stringify({ community }) });
+      rawDispatch({ type: 'NAV', patch: { needsCommunity: false } });
+      await enterLive(d.user, { fromAuth: true });
+      return d.user;
+    },
     async logout() {
       try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
       rawDispatch({ type: 'SET_USER', user: null });

@@ -196,7 +196,11 @@ export function IdeasPage() {
       ) : list.length ? (
         <div className="grid gap-3 lg:grid-cols-2">{list.map((i) => <IdeaCard key={i.id} idea={i} />)}</div>
       ) : (
-        <Empty icon={Star} title={tab === 'featured' ? 'No featured ideas yet' : 'No ideas match'} text={tab === 'featured' ? 'Open any idea and click “Feature idea” to spotlight it to your members.' : 'Try a different search or community.'} />
+        state.ideas.length === 0 ? (
+          <Empty icon={Lightbulb} title="No ideas yet" text="Ideas appear here the moment your members start sharing. Share your invite link to bring your audience in — FanOS will score and cluster every idea automatically." />
+        ) : (
+          <Empty icon={Star} title={tab === 'featured' ? 'No featured ideas yet' : 'No ideas match'} text={tab === 'featured' ? 'Open any idea and click “Feature idea” to spotlight it to your members.' : 'Try a different search or community.'} />
+        )
       )}
     </div>
   );
@@ -364,6 +368,11 @@ export function PeoplePage() {
           ) : <Empty icon={Search} title="No members match" text="Try fewer filters, e.g. just a role or a skill." />}
         </section>
       ) : (
+        state.members.length === 0 ? (
+          <div className="mt-6">
+            <Empty icon={Users} title="No members yet" text="This is where you’ll search your audience like a database — by skill, interest, city or contribution, in plain English. Share your invite link to bring your followers in." />
+          </div>
+        ) : (
         <div className="mt-6 grid gap-6 xl:grid-cols-12">
           <section className="xl:col-span-5">
             <SectionTitle eyebrow="AI-discovered" icon={Gem} title="Hidden gems" />
@@ -401,6 +410,7 @@ export function PeoplePage() {
             </div>
           </section>
         </div>
+        )
       )}
     </div>
   );

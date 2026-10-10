@@ -59,7 +59,8 @@ function IdeaModal({ id, onClose }) {
 
   const stage = ideaStage(idea, state.projects);
   const copyPublicLink = async () => {
-    try { await navigator.clipboard.writeText(`${window.location.origin}/i/${idea.id}`); dispatch({ type: 'TOAST', toast: { text: 'Public link copied — anyone can open it' } }); } catch { /* ignore */ }
+    const link = `${window.location.origin}/i/${encodeURIComponent(state.user?.communityId || '')}/${idea.id}`;
+    try { await navigator.clipboard.writeText(link); dispatch({ type: 'TOAST', toast: { text: 'Public link copied — anyone can open it' } }); } catch { /* ignore */ }
   };
   // Actions offered by the Action Brief's "next step" and the creator buttons.
   const runAction = (action, memberId) => {

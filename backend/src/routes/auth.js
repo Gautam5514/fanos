@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { adminDb, authClient, supabaseConfigured } from '../lib/supabase.js';
-import { createProfile, EMAIL_RE, fromProfile, getProfile, getUser, passwordWeakness, publicUser, rateLimited, rateLimitedKey } from '../lib/auth.js';
+import { createProfile, EMAIL_RE, fromProfile, getCommunityCreator, getProfile, getUser, passwordWeakness, publicUser, rateLimited, rateLimitedKey, setCommunityId } from '../lib/auth.js';
 import { readJson } from '../lib/http.js';
 
 const router = Router();
@@ -14,6 +14,7 @@ router.get('/me', async (req, res) => {
 
 // Creates a Supabase Auth user (email pre-confirmed, so no confirmation email is needed),
 // a profile row with the chosen role, then signs the user in (session cookies set by @supabase/ssr).
+// Members may pass `community` (a creator id from the invite link) to join that community.
 router.post('/signup', async (req, res) => {
   if (rateLimited(req, 'signup', 10, 3_600_000)) return res.status(429).json({ error: 'Too many attempts. Try again later.' });
   const b = readJson(req, res, 10_000, INVALID);
@@ -27,6 +28,17 @@ router.post('/signup', async (req, res) => {
   if (weak) return res.status(400).json({ error: weak });
   if (name.length < 2) return res.status(400).json({ error: 'Enter your name' });
 
+  // Members join a specific creator's community (from the invite link). Validate it exists.
+  let communityId = null;
+  if (role === 'member') {
+    const requested = String(b?.community || '').trim();
+    if (requested) {
+      const creator = await getCommunityCreator(requested);
+      if (!creator) return res.status(404).json({ error: 'That community link is invalid or no longer exists.' });
+      communityId = creator.id;
+    }
+  }
+
   const { data: created, error } = await adminDb().auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name } });
   if (error) {
     if (/already|registered|exists/i.test(error.message)) return res.status(409).json({ error: 'An account with this email already exists — log in instead' });
@@ -36,7 +48,7 @@ router.post('/signup', async (req, res) => {
   }
   let profile;
   try {
-    profile = await createProfile({ id: created.user.id, email, name, role, provider: 'email' });
+    profile = await createProfile({ id: created.user.id, email, name, role, provider: 'email', communityId });
   } catch (e) {
     await adminDb().auth.admin.deleteUser(created.user.id); // keep auth + profiles consistent
     throw e;
@@ -44,7 +56,7 @@ router.post('/signup', async (req, res) => {
   const sb = authClient(req, res);
   const signIn = await sb.auth.signInWithPassword({ email, password });
   if (signIn.error) return res.status(201).json({ error: 'Account created — please log in' });
-  res.status(201).json({ user: publicUser({ id: profile.id, email, name, role, memberId: null, provider: 'email' }) });
+  res.status(201).json({ user: publicUser(fromProfile(profile)) });
 });
 
 router.post('/login', async (req, res) => {
@@ -67,6 +79,22 @@ router.post('/login', async (req, res) => {
 router.post('/logout', async (req, res) => {
   await authClient(req, res).auth.signOut();
   res.json({ ok: true });
+});
+
+// Attach a signed-in member (who has no community yet) to a creator's community.
+// Used when a member signed up without an invite link, then pastes one later.
+router.post('/join', async (req, res) => {
+  const user = await getUser(req, res);
+  if (!user) return res.status(401).json({ error: 'Sign in required' });
+  if (user.role !== 'member') return res.status(403).json({ error: 'Members only' });
+  if (user.communityId) return res.status(409).json({ error: 'You already belong to a community' });
+  const b = readJson(req, res, 2_000, INVALID);
+  if (b === undefined) return;
+  const requested = String(b?.community || '').trim();
+  const creator = await getCommunityCreator(requested);
+  if (!creator) return res.status(404).json({ error: 'That community link is invalid or no longer exists.' });
+  await setCommunityId(user.id, creator.id);
+  res.json({ user: publicUser({ ...user, communityId: creator.id }) });
 });
 
 export default router;

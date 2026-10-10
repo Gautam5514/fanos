@@ -1,23 +1,80 @@
 'use client';
 
-import { useMemo } from 'react';
-import { Sparkles, Flame, Lightbulb, Users, Inbox, Boxes, ArrowRight, Star, Gem, Newspaper, MessageSquareText, Layers, Target, TrendingUp } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Sparkles, Flame, Lightbulb, Users, Inbox, Boxes, ArrowRight, Star, Gem, Newspaper, MessageSquareText, Layers, Target, TrendingUp, Link2, Check, Rocket, Boxes as BoxesIcon } from 'lucide-react';
 import { useStore } from '../../lib/store';
 import { buildBrief, contributionScore, hiddenGems, trends, fmt, hoursAgo } from '../../lib/ai';
 import { CREATOR } from '../../lib/seed';
 import { Avatar, Button, SectionTitle, Sparkline, cx } from '../ui';
 import { ClusterCard, IdeaCard, PersonRow, useOpen, clusterHelpers } from '../shared';
 import { Aurora } from '../chrome';
-import DrawnArrow from '../DrawnArrow';
 
 function greeting() {
   const h = new Date().getHours();
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }
 
+// First-run experience: shown on the dashboard until the community has its first member or idea.
+// Turns an empty dashboard into a clear, premium "here's how to start" moment.
+function FirstRun({ firstName, go }) {
+  const { state } = useStore();
+  const [copied, setCopied] = useState(false);
+  const inviteLink = typeof window !== 'undefined' ? `${window.location.origin}/join/${encodeURIComponent(state.user?.id || '')}` : '';
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(inviteLink); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ }
+  };
+  const steps = [
+    { icon: Link2, title: 'Share your invite link', text: 'Send it to your followers. They sign up and join your community in seconds.' },
+    { icon: BoxesIcon, title: 'Create interest-based communities', text: 'Group your audience by what they care about — AI, design, startups, and more.' },
+    { icon: Lightbulb, title: 'Collect & surface ideas', text: 'Members share ideas; FanOS AI scores, clusters and surfaces the best ones for you.' },
+    { icon: Rocket, title: 'Turn ideas into projects', text: 'Pick a high-signal idea, assemble a team from your community, and ship it together.' },
+  ];
+  return (
+    <div className="space-y-6">
+      <section aria-label="Welcome" className="relative animate-fade-up overflow-hidden rounded-[28px] bg-night p-6 text-white shadow-pop sm:p-9">
+        <Aurora tone="dark" />
+        <div className="relative max-w-2xl">
+          <p className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.14em] text-white/80"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Welcome to FanOS</p>
+          <h1 className="mt-4 font-display text-3xl font-semibold leading-tight sm:text-[40px]">{greeting()}, <span className="ai-gradient-animated">{firstName}</span> 👋</h1>
+          <p className="mt-3 text-[15px] text-white/70">Your community is ready — it just needs its first members. Share your invite link and FanOS will start organizing your audience, surfacing ideas, and spotting opportunities automatically.</p>
+
+          <div className="mt-6 rounded-2xl border border-white/15 bg-white/[.07] p-2 backdrop-blur-xl sm:flex sm:items-center sm:gap-2">
+            <code className="block min-w-0 flex-1 truncate rounded-xl bg-black/20 px-3.5 py-2.5 text-sm text-white/90">{inviteLink || 'Loading your invite link…'}</code>
+            <Button onClick={copy} icon={copied ? Check : Link2} className="mt-2 w-full shrink-0 bg-white text-ink hover:bg-white/90 sm:mt-0 sm:w-auto">{copied ? 'Copied!' : 'Copy invite link'}</Button>
+          </div>
+        </div>
+      </section>
+
+      <section aria-label="How it works" className="grid gap-3 sm:grid-cols-2">
+        {steps.map((s, i) => (
+          <div key={s.title} className="card animate-fade-up p-5" style={{ animationDelay: `${i * 80}ms` }}>
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent"><s.icon className="h-5 w-5" aria-hidden="true" /></span>
+              <div>
+                <p className="font-display text-base font-semibold text-ink"><span className="text-muted">{i + 1}.</span> {s.title}</p>
+                <p className="mt-1 text-sm text-ink-2">{s.text}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-white/70 p-5 backdrop-blur">
+        <div>
+          <p className="font-display text-base font-semibold text-ink">Set up your first communities</p>
+          <p className="mt-0.5 text-sm text-ink-2">Create interest-based spaces so members land in the right place.</p>
+        </div>
+        <Button variant="accent" icon={BoxesIcon} onClick={() => go('communities')}>Create a community</Button>
+      </section>
+    </div>
+  );
+}
+
 export default function Dashboard({ go, ask }) {
   const { state, intel } = useStore();
   const open = useOpen();
+  // Greet the signed-in user by their own first name; fall back to the creator brand.
+  const firstName = (state.user?.name || '').trim().split(' ')[0] || CREATOR.firstName;
   const brief = useMemo(() => buildBrief(state, intel), [state, intel]);
   const t = trends(state.ideas);
   const gems = hiddenGems(state.members);
@@ -38,6 +95,10 @@ export default function Dashboard({ go, ask }) {
   const topOpenCluster = intel.clusters[0];
   const clusterHelpersCount = topOpenCluster ? clusterHelpers(topOpenCluster, state.members).total : 0;
 
+  // Brand-new community (no members and no ideas yet): show the first-run guide instead of
+  // an empty data dashboard. All hooks above have already run, so this early return is safe.
+  if (totalMembers === 0 && state.ideas.length === 0) return <FirstRun firstName={firstName} go={go} />;
+
   return (
     <div className="space-y-6">
       {/* Command center: greeting + the noise → signal pipeline in one dark banner */}
@@ -46,7 +107,7 @@ export default function Dashboard({ go, ask }) {
         <div className="relative grid items-center gap-7 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
           <div>
             <p className="text-sm text-white/55">{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
-            <h1 className="mt-1 font-display text-3xl font-semibold leading-tight sm:text-[40px]">{greeting()}, <span className="ai-gradient-animated">{CREATOR.firstName}</span> 👋</h1>
+            <h1 className="mt-1 font-display text-3xl font-semibold leading-tight sm:text-[40px]">{greeting()}, <span className="ai-gradient-animated">{firstName}</span> 👋</h1>
             <p className="mt-2 max-w-md text-[15px] text-white/70">
               FanOS analyzed <b className="font-semibold text-white">{brief.analyzed.toLocaleString('en-US')}</b> activities since yesterday and found <b className="font-semibold text-white">{brief.things.length} things worth your attention</b>.
             </p>
@@ -62,15 +123,14 @@ export default function Dashboard({ go, ask }) {
               { n: state.ideas.length.toLocaleString('en-US'), l: 'Ideas shared', s: 'by your members', icon: Lightbulb },
               { n: intel.clusters.length, l: 'Topic clusters', s: 'duplicates merged', icon: Layers },
               { n: brief.things.length, l: 'Need you', s: 'ranked by Signal', icon: Target, hl: true },
-            ].map((x, i) => (
-              <li key={x.l} className={cx('relative rounded-xl px-2.5 py-2 ring-1', x.hl ? 'bg-gradient-to-br from-accent via-[#8a3df0] to-coral ring-white/20 shadow-[0_14px_32px_-12px_rgba(176,63,240,.8)]' : 'bg-white/[.06] ring-white/10')}>
+            ].map((x) => (
+              <li key={x.l} className={cx('relative rounded-xl px-2.5 py-2 ring-1', x.hl ? 'bg-accent/90 ring-white/20' : 'bg-white/[.06] ring-white/10')}>
                 <div className="flex items-center justify-between">
                   <p className="font-display text-[20px] font-semibold leading-none">{x.n}</p>
                   <x.icon className={cx('h-3.5 w-3.5', x.hl ? 'text-white' : 'text-white/50')} aria-hidden="true" />
                 </div>
                 <p className="mt-1.5 text-[13px] font-medium leading-tight">{x.l}</p>
                 <p className={cx('truncate text-[10px]', x.hl ? 'text-white/80' : 'text-white/45')}>{x.s}</p>
-                {i < 3 && <DrawnArrow variant="wave" tone="light" delay={0.3 + i * 0.3} className="absolute -right-[46px] top-1/2 z-10 hidden h-5 w-11 -translate-y-1/2 sm:block" />}
               </li>
             ))}
           </ol>
@@ -97,12 +157,6 @@ export default function Dashboard({ go, ask }) {
             </span>
           </button>
         ))}
-        {/* Arrows between KPI cards — overlaid so .tile's overflow:hidden can't clip them. */}
-        {[0, 1, 2].map((i) => (
-          <DrawnArrow key={i} variant="wave" delay={1.3 + i * 0.3}
-            className="absolute top-1/2 z-10 hidden h-6 w-12 -translate-x-1/2 -translate-y-1/2 lg:block"
-            style={{ left: `calc(${(i + 1) * 25}% )` }} />
-        ))}
       </section>
 
       <div className="grid gap-6 xl:grid-cols-12">
@@ -111,7 +165,7 @@ export default function Dashboard({ go, ask }) {
           <section className="card p-5 sm:p-6">
             <SectionTitle eyebrow="AI Signals" icon={Flame} title="What’s moving in your community" action={<Button size="sm" variant="ghost" onClick={() => ask('What topics are trending?')}>Ask why →</Button>} />
             {topCluster && (
-              <button onClick={() => go('ideas', { ideasTab: 'clusters' })} className="mb-5 flex w-full items-center gap-4 rounded-2xl bg-gradient-to-r from-coral-soft to-accent-soft p-4 text-left transition hover:brightness-[.98]">
+              <button onClick={() => go('ideas', { ideasTab: 'clusters' })} className="mb-5 flex w-full items-center gap-4 rounded-2xl bg-accent-soft p-4 text-left transition hover:brightness-[.98]">
                 <span className="text-3xl" aria-hidden="true">🔥</span>
                 <span className="flex-1">
                   <span className="block font-display text-lg font-semibold text-ink">{topCluster.requests} members are asking for “{topCluster.label}”</span>

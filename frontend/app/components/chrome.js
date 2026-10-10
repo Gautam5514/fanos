@@ -68,7 +68,7 @@ export function PageHeader({ eyebrow, icon: Icon, title, description, actions, c
       <div aria-hidden="true" className="pointer-events-none absolute -left-6 -top-8 -z-10 h-28 w-72 rounded-full bg-gradient-to-r from-accent/15 via-[#c06bff]/10 to-transparent blur-2xl" />
       <div className="relative min-w-0 max-w-3xl pl-4">
         {/* Accent bar runs down the left edge of the header. */}
-        <span aria-hidden="true" className="absolute left-0 top-1 h-[calc(100%-0.5rem)] w-1 rounded-full bg-gradient-to-b from-accent via-[#9b4bf0] to-coral" />
+        <span aria-hidden="true" className="absolute left-0 top-1 h-[calc(100%-0.5rem)] w-1 rounded-full bg-gradient-to-b from-accent to-[#9b4bf0]" />
         {eyebrow && (
           <p className="inline-flex items-center gap-1.5 rounded-full border border-accent/15 bg-accent-soft/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.14em] text-accent shadow-sm shadow-accent/5">
             {Icon && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}{eyebrow}

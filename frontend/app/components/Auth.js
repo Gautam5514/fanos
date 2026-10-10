@@ -39,16 +39,27 @@ function Field({ id, label, icon: Icon, trailing, invalid, ...props }) {
   );
 }
 
-// Shown on signup when a follower arrives through the creator's invite link (/join):
+// Shown on signup when a follower arrives through a creator's invite link (/join/:creatorId):
 // who they're joining, loaded from the public community endpoint (no sign-in needed).
-function InvitePreviewCard() {
+function InvitePreviewCard({ communityId }) {
   const [c, setC] = useState(null);
   useEffect(() => {
+    if (!communityId) return undefined;
     let alive = true;
-    fetch('/api/public/community').then((r) => (r.ok ? r.json() : null)).then((d) => alive && setC(d)).catch(() => {});
+    fetch(`/api/public/community/${encodeURIComponent(communityId)}`).then((r) => (r.ok ? r.json() : null)).then((d) => alive && setC(d || { invalid: true })).catch(() => alive && setC({ invalid: true }));
     return () => { alive = false; };
-  }, []);
+  }, [communityId]);
+  if (!communityId) return (
+    <div className="mt-6 max-w-md rounded-2xl border border-amber/30 bg-amber-soft/60 p-4 text-sm text-ink">
+      This invite link is invalid or missing. Ask the creator for their current invite link, then create your account.
+    </div>
+  );
   if (!c) return <div className="mt-6 h-[92px] max-w-md animate-pulse rounded-2xl bg-line-2" aria-hidden="true" />;
+  if (c.invalid) return (
+    <div className="mt-6 max-w-md rounded-2xl border border-amber/30 bg-amber-soft/60 p-4 text-sm text-ink">
+      This invite link is invalid or missing. Ask the creator for their current invite link, then create your account.
+    </div>
+  );
   const name = c.creator?.name || 'the creator';
   const fmtN = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n));
   return (
@@ -102,7 +113,7 @@ export function AuthScreen() {
     if (!canSubmit) return;
     setError(''); setBusy(true);
     try {
-      if (isSignup) await auth.signup({ ...f, email: f.email.trim(), role });
+      if (isSignup) await auth.signup({ ...f, email: f.email.trim(), role, ...(role === 'member' && state.inviteCommunity ? { community: state.inviteCommunity } : {}) });
       else await auth.login({ email: f.email.trim(), password: f.password });
     } catch (err) {
       setError(err.status ? err.message : 'Cannot reach the FanOS server. Please try again in a moment.');
@@ -142,7 +153,7 @@ export function AuthScreen() {
             <p className="mt-2 max-w-sm text-[15px] text-ink-2">{isSignup ? 'Step into a community that builds with you — ideas, talent and projects in one place.' : 'Log in to your FanOS community and pick up where you left off.'}</p>
           </div>
 
-          {state.viaInvite && isSignup && <InvitePreviewCard />}
+          {state.viaInvite && isSignup && <InvitePreviewCard communityId={state.inviteCommunity} />}
 
           {/* Segmented control with sliding thumb */}
           <div role="tablist" aria-label="Sign up or log in" className="relative mt-7 grid grid-cols-2 rounded-full bg-line-2 p-1">
@@ -320,8 +331,13 @@ const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M
 function InvitePreview({ f }) {
   const name = f.name.trim() || 'Your name';
   const first = name.split(' ')[0];
-  const platforms = PLATFORM_META.map(([k, label, Icon, grad]) => [label, Icon, grad, Number(f[k]) || 0]).filter((p) => p[3] > 0);
-  const reach = platforms.reduce((s, p) => s + p[3], 0);
+  const bare = (h) => String(h || '').trim().replace(/^@+/, '').replace(/\s+/g, '');
+  const mainHandle = bare(f.handle);
+  // Each platform's effective handle follows the main username unless overridden per row.
+  const handleFor = (key) => bare(f[`${key}h`]) || mainHandle;
+  const platforms = PLATFORM_META.map(([k, label, Icon, grad]) => ({ label, Icon, grad, n: Number(f[k]) || 0, handle: handleFor(k) }))
+    .filter((p) => p.n > 0 || p.handle);
+  const reach = platforms.reduce((s, p) => s + p.n, 0);
   return (
     <div>
       <div className="rounded-3xl bg-white p-6 text-left shadow-[0_30px_80px_-20px_rgba(0,0,0,.6)] ring-1 ring-white/20">
@@ -329,17 +345,17 @@ function InvitePreview({ f }) {
           <Avatar name={name} size={48} />
           <div className="min-w-0">
             <p className="text-xs text-muted">You’re invited by</p>
-            <p className="truncate font-semibold text-ink">{name} {f.handle.trim() && <span className="font-normal text-muted">{f.handle.trim()}</span>}</p>
+            <p className="truncate font-semibold text-ink">{name} {mainHandle && <span className="font-normal text-muted">@{mainHandle}</span>}</p>
           </div>
         </div>
         <p className="mt-5 font-display text-2xl font-semibold leading-tight text-ink">{f.name.trim() ? `Join ${first}’s community` : 'Join the community'}</p>
         <p className="mt-1 text-sm text-ink-2">{f.niche.trim() || 'Share ideas, build projects and find collaborators.'}</p>
         {platforms.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-1.5">
-            {platforms.map(([label, Icon, grad, n]) => (
+            {platforms.map(({ label, Icon, grad, n, handle }) => (
               <span key={label} className="inline-flex items-center gap-1.5 rounded-full bg-line-2 py-1 pl-1 pr-2.5 text-xs font-medium text-ink-2">
                 <span className={cx('flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br text-white', grad)}><Icon className="h-3 w-3" aria-hidden="true" /></span>
-                {compact(n)}
+                {n > 0 ? compact(n) : (handle ? `@${handle}` : label)}
               </span>
             ))}
           </div>
@@ -356,19 +372,77 @@ function InvitePreview({ f }) {
 export function CreatorSetup() {
   const { state, dispatch, auth } = useStore();
   const c = state.creator?.claimed ? state.creator : null;
+  const saved = (label) => c?.platforms?.find((p) => p.name === label);
+  // Which platform the saved profile already had (so editing re-opens on it); default YouTube.
+  const savedPrimary = c?.platforms?.[0]?.name;
+  const [primary, setPrimary] = useState(({ Instagram: 'ig', YouTube: 'yt', X: 'x' })[savedPrimary] || 'yt');
   const [f, setF] = useState({
     name: c?.name || state.user?.name || '', handle: c?.handle || '', niche: c?.niche || '',
-    ig: c?.platforms?.find((p) => p.name === 'Instagram')?.followers || '', yt: c?.platforms?.find((p) => p.name === 'YouTube')?.followers || '', x: c?.platforms?.find((p) => p.name === 'X')?.followers || '',
+    ig: saved('Instagram')?.followers || '', yt: saved('YouTube')?.followers || '', x: saved('X')?.followers || '',
+    // Per-platform handles. Empty string = "inherit from the main handle" (auto-picked).
+    igh: saved('Instagram')?.handle || '', yth: saved('YouTube')?.handle || '', xh: saved('X')?.handle || '',
   });
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+
+  // Normalize a handle to a bare username (strip leading @, spaces and any URL parts).
+  const bareHandle = (h) => String(h || '').trim().replace(/^@+/, '').replace(/\s+/g, '').replace(/.*\/(@?)/, '');
+  const mainHandle = bareHandle(f.handle);
+  // Each platform's effective handle: its own override, else auto-picked from the main handle.
+  const handleFor = (key) => bareHandle(f[`${key}h`]) || mainHandle;
+
   const ok = f.name.trim().length >= 2;
+
+  // YouTube auto-fetch via the backend (official Data API). Only enabled when the server has a key.
+  const [ytEnabled, setYtEnabled] = useState(false);
+  const [ytState, setYtState] = useState({ busy: false, note: '' });
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/integrations/youtube').then((r) => (r.ok ? r.json() : null)).then((d) => alive && setYtEnabled(!!d?.enabled)).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const fetchYouTube = async () => {
+    const handle = handleFor('yt');
+    if (!handle) { setYtState({ busy: false, note: 'Enter your YouTube handle first.' }); return; }
+    setYtState({ busy: true, note: '' });
+    try {
+      const r = await fetch(`/api/integrations/youtube?handle=${encodeURIComponent(handle)}`);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setYtState({ busy: false, note: d.error || 'Could not fetch — enter it manually.' }); return; }
+      const ch = d.channel || {};
+      setF((x) => ({
+        ...x,
+        yt: ch.subscribers != null ? String(ch.subscribers) : x.yt,
+        yth: ch.handle ? ch.handle.replace(/^@+/, '') : x.yth,
+      }));
+      setYtState({ busy: false, note: ch.subscribers == null ? `${ch.title || 'Channel'} found — subscribers are hidden on this channel.` : `✓ ${ch.title || 'Channel'} · ${ch.subscribers.toLocaleString('en-US')} subscribers` });
+    } catch {
+      setYtState({ busy: false, note: 'Could not reach the server — enter it manually.' });
+    }
+  };
+
   const save = (e) => {
     e.preventDefault();
     if (!ok) return;
-    const platforms = [['Instagram', f.ig], ['YouTube', f.yt], ['X', f.x]].filter(([, n]) => Number(n) > 0).map(([name, n]) => ({ name, followers: Number(n) }));
-    dispatch({ type: 'SET_CREATOR', creator: { name: f.name.trim(), handle: f.handle.trim(), niche: f.niche.trim(), platforms: platforms.length ? platforms : state.creator.platforms } });
+    // Save every platform that has a handle or a follower count — not just the primary — so
+    // nothing the creator typed is lost, while the UI stays focused on one primary platform.
+    const rows = [['Instagram', 'ig'], ['YouTube', 'yt'], ['X', 'x']];
+    const primaryKey = primary;
+    const platforms = rows
+      .map(([name, key]) => ({ name, key, handle: handleFor(key), followers: Number(f[key]) || 0 }))
+      .filter((p) => p.handle || p.followers > 0)
+      // Keep the chosen primary platform first.
+      .sort((a, b) => (a.key === primaryKey ? -1 : b.key === primaryKey ? 1 : 0))
+      .map(({ name, handle, followers }) => ({ name, handle, followers }));
+    dispatch({ type: 'SET_CREATOR', creator: { name: f.name.trim(), handle: mainHandle ? `@${mainHandle}` : '', niche: f.niche.trim(), platforms: platforms.length ? platforms : state.creator.platforms } });
     dispatch({ type: 'NAV', patch: { view: 'creator', creatorPage: 'dashboard' } });
   };
+
+  // The one platform shown on this screen (others can be added later from the dashboard).
+  const [pKey, pLabel, PIcon, pGrad] = PLATFORM_META.find(([k]) => k === primary) || PLATFORM_META[1];
+  const pHandle = handleFor(pKey);
+  const pAuto = !bareHandle(f[`${pKey}h`]);
+  const isYt = pKey === 'yt';
+
   return (
     <SplitShell
       eyebrow="What your followers see"
@@ -384,31 +458,61 @@ export function CreatorSetup() {
       <form onSubmit={save} className="animate-fade-up">
         <p className="inline-flex items-center gap-1.5 rounded-full border border-accent/15 bg-accent-soft/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.14em] text-accent"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Creator profile</p>
         <h1 className="mt-3 font-display text-3xl font-semibold text-ink sm:text-4xl">Set up your <span className="ai-gradient-animated">community</span></h1>
-        <p className="mt-2 text-ink-2">Takes a minute. Your community starts empty — real members, ideas and activity appear as people join through your invite link.</p>
+        <p className="mt-2 text-ink-2">Three quick details. Your community starts empty — real members and ideas appear as people join through your invite link.</p>
 
         <div className="card mt-7 p-6">
-          <p className="text-xs font-semibold uppercase tracking-[.12em] text-muted">Profile</p>
-          <div className="mt-4 space-y-4">
-            <Field id="c-name" label="Name *" icon={User} value={f.name} onChange={set('name')} maxLength={60} required placeholder="e.g. gautam Kumar" />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field id="c-handle" label="Handle" icon={AtSign} value={f.handle} onChange={set('handle')} maxLength={40} placeholder="@yourhandle" />
-              <Field id="c-niche" label="Niche" icon={Sparkles} value={f.niche} onChange={set('niche')} maxLength={80} placeholder="AI, startups & building in public" />
-            </div>
+          <div className="space-y-4">
+            <Field id="c-name" label="Name" icon={User} value={f.name} onChange={set('name')} maxLength={60} required placeholder="e.g. Gautam Kumar" />
+            <Field id="c-handle" label="Username" icon={AtSign} value={f.handle} onChange={set('handle')} maxLength={40} placeholder="yourhandle" />
+            <Field id="c-niche" label="Niche" icon={Sparkles} value={f.niche} onChange={set('niche')} maxLength={80} placeholder="AI, startups & building in public" />
           </div>
         </div>
 
         <div className="card mt-4 p-6">
-          <p className="text-xs font-semibold uppercase tracking-[.12em] text-muted">Audience <span className="font-normal normal-case tracking-normal">(optional)</span></p>
-          <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
-            {PLATFORM_META.map(([k, label, Icon, grad]) => (
-              <label key={k} htmlFor={`c-${k}`} className="group rounded-2xl border border-line bg-white p-3 transition focus-within:border-accent focus-within:ring-4 focus-within:ring-accent/10 hover:border-ink/20">
-                <span className="flex items-center gap-2 text-xs font-medium text-ink-2">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-sm font-semibold text-ink">Your main platform <span className="font-normal text-muted">(optional)</span></p>
+            <p className="text-[11px] text-muted">Add more later</p>
+          </div>
+
+          {/* Platform picker — pick one to feature now */}
+          <div role="radiogroup" aria-label="Main platform" className="mt-3 grid grid-cols-3 gap-2">
+            {PLATFORM_META.map(([k, label, Icon, grad]) => {
+              const on = primary === k;
+              return (
+                <button key={k} type="button" role="radio" aria-checked={on} onClick={() => setPrimary(k)}
+                  className={cx('flex h-11 items-center justify-center gap-2 rounded-xl border text-sm font-medium transition', on ? 'border-accent bg-accent-soft text-accent ring-2 ring-accent/15' : 'border-line bg-white text-ink-2 hover:border-ink/20 hover:text-ink')}>
                   <span className={cx('flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br text-white', grad)}><Icon className="h-3.5 w-3.5" aria-hidden="true" /></span>
                   {label}
-                </span>
-                <input id={`c-${k}`} type="number" min="0" inputMode="numeric" value={f[k]} onChange={set(k)} placeholder="0" className="mt-2 w-full bg-transparent font-display text-xl font-semibold text-ink outline-none placeholder:text-line" />
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Selected platform: auto-filled handle + followers (YouTube can auto-fetch) */}
+          <div className="mt-3 space-y-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
+              <label htmlFor={`c-${pKey}-handle`} className="relative min-w-0 flex-1">
+                <span className="mb-1.5 block text-xs font-medium text-ink">{pLabel} handle</span>
+                <span className="pointer-events-none absolute left-3 top-[2.1rem] text-sm text-muted">@</span>
+                <input id={`c-${pKey}-handle`} value={pHandle} onChange={set(`${pKey}h`)} maxLength={40} autoComplete="off" placeholder={mainHandle || 'handle'}
+                  className="h-11 w-full rounded-xl border border-line bg-paper/60 pl-7 pr-14 text-sm text-ink outline-none transition focus:border-accent focus:bg-white" />
+                {pAuto && pHandle && <span className="pointer-events-none absolute right-3 top-[2.3rem] rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent">auto</span>}
               </label>
-            ))}
+              <label htmlFor={`c-${pKey}`} className="sm:w-40">
+                <span className="mb-1.5 block text-xs font-medium text-ink">{isYt ? 'Subscribers' : 'Followers'}</span>
+                <input id={`c-${pKey}`} type="number" min="0" inputMode="numeric" value={f[pKey]} onChange={set(pKey)} placeholder="0"
+                  className="h-11 w-full rounded-xl border border-line bg-paper/60 px-3 text-right text-sm font-semibold text-ink outline-none transition focus:border-accent focus:bg-white placeholder:font-normal placeholder:text-line" />
+              </label>
+              {isYt && ytEnabled && (
+                <button type="button" onClick={fetchYouTube} disabled={ytState.busy || !pHandle}
+                  className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-accent/30 bg-accent-soft px-4 text-sm font-semibold text-accent transition hover:bg-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-50">
+                  {ytState.busy ? <Sparkles className="h-4 w-4 animate-pulse" aria-hidden="true" /> : <Zap className="h-4 w-4" aria-hidden="true" />}
+                  {ytState.busy ? 'Fetching…' : 'Fetch'}
+                </button>
+              )}
+            </div>
+            {isYt && ytEnabled && !ytState.note && <p className="text-xs text-muted">Tip: enter your YouTube handle and tap Fetch to pull your real subscriber count.</p>}
+            {isYt && ytState.note && <p className={cx('text-xs', ytState.note.startsWith('✓') ? 'text-mint' : 'text-muted')}>{ytState.note}</p>}
           </div>
         </div>
 

@@ -6,7 +6,7 @@ import { reducer, SHARED_KEYS, pickShared } from '../shared/reducer.js';
 import { CATEGORIES, GOALS, INTERESTS, NEEDS, ROLES, ROLE_SKILLS } from '../shared/seed.js';
 import { moderate } from '../shared/ai.js';
 import { withRetry } from './db.js';
-import { setMemberId } from './auth.js';
+import { setCommunityId, setMemberId } from './auth.js';
 
 export class ActionError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -45,7 +45,7 @@ function sanitize(a, user, st) {
       };
     }
     case 'SET_CREATOR': {
-      const platforms = Array.isArray(a.creator?.platforms) ? a.creator.platforms.slice(0, 6).map((p) => ({ name: str(p?.name, 20), followers: Math.max(0, Math.min(1e10, Math.round(Number(p?.followers) || 0))) })).filter((p) => p.name) : undefined;
+      const platforms = Array.isArray(a.creator?.platforms) ? a.creator.platforms.slice(0, 6).map((p) => ({ name: str(p?.name, 20), handle: str(p?.handle, 40), followers: Math.max(0, Math.min(1e10, Math.round(Number(p?.followers) || 0))) })).filter((p) => p.name) : undefined;
       return { type: 'SET_CREATOR', creator: { name: str(a.creator?.name, 60, 2), handle: str(a.creator?.handle, 40), niche: str(a.creator?.niche, 80), ...(platforms ? { platforms } : {}) } };
     }
     case 'JOIN_COMMUNITY':
@@ -161,7 +161,12 @@ export async function applyAction(user, raw) {
   if (MEMBER_ONLY.has(raw.type) && user.role !== 'member') throw new ActionError(403, 'Members only');
   if (raw.type !== 'ONBOARD' && user.role === 'member' && !user.memberId) throw new ActionError(409, 'Finish onboarding first');
 
-  const { st, result: action } = await withRetry(async (st) => {
+  // Which community document this write targets. Creators own their own; members use the
+  // community they joined. A member without a community can only ONBOARD (which assigns one).
+  const communityId = user.communityId || null;
+  if (!communityId) throw new ActionError(409, 'Join a community first');
+
+  const { st, result: action } = await withRetry(communityId, async (st) => {
     const action = sanitize(raw, user, st);
     const memberId = action.type === 'ONBOARD' ? action.memberId : user.memberId;
     const ctx = { ...pickShared(st), mode: 'live', meId: memberId || null, supported: (memberId && st.memberSupports?.[memberId]) || {}, saved: {}, validation: {} };
@@ -178,9 +183,9 @@ export async function applyAction(user, raw) {
   return { action, snapshot: snapshotFor(user, st) };
 }
 
-// Used for background AI enrichment (not exposed to clients).
-export async function applyInternal(action) {
-  await withRetry(async (st) => {
+// Used for background AI enrichment (not exposed to clients). Scoped to one community.
+export async function applyInternal(communityId, action) {
+  await withRetry(communityId, async (st) => {
     const next = reducer({ ...pickShared(st), supported: {}, saved: {}, validation: {} }, action);
     SHARED_KEYS.forEach((k) => (st[k] = next[k]));
   });

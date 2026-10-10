@@ -29,9 +29,60 @@ function Pick({ options, emoji, value, onToggle, multi = true }) {
   );
 }
 
+// Shown to a signed-in member who has not joined any community yet (they signed up without
+// an invite link). They paste a creator's invite link (or id) to join the right community.
+function JoinCommunityGate() {
+  const { dispatch, auth } = useStore();
+  const [value, setValue] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // Accept a full invite link (…/join/<id>) or a bare community id.
+  const extractId = (raw) => {
+    const s = raw.trim();
+    const m = s.match(/\/join\/([^/?#]+)/i);
+    return decodeURIComponent(m ? m[1] : s);
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const id = extractId(value);
+    if (!id) { setError('Paste the invite link your creator shared.'); return; }
+    setError(''); setBusy(true);
+    try { await auth.joinCommunity(id); }
+    catch (err) { setError(err.status ? err.message : 'Could not join. Check the link and try again.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <SplitShell
+      eyebrow="One step to go"
+      panelTitle={<>Join a creator&rsquo;s <span className="ai-gradient-animated">community.</span></>}
+      panel={(
+        <div className="rounded-3xl border border-white/15 bg-white/[.07] p-6 text-white/80 backdrop-blur-xl">
+          <p className="text-sm">Every community on FanOS belongs to a creator. Open the invite link your creator shared with you, or paste it here to join.</p>
+        </div>
+      )}
+      topRight={<button onClick={() => auth.logout()} className="transition hover:text-ink">Log out</button>}
+    >
+      <form onSubmit={submit} className="animate-fade-up max-w-md">
+        <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.12em] text-accent"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Join a community</p>
+        <h1 className="mt-2 font-display text-3xl font-semibold text-ink sm:text-4xl">Paste your <span className="ai-gradient-animated">invite link</span></h1>
+        <p className="mt-2 text-ink-2">You created an account, but you&rsquo;re not part of a community yet. Paste the invite link your creator gave you to join.</p>
+        <label htmlFor="join-link" className="mt-7 block text-sm font-medium text-ink">Invite link</label>
+        <input id="join-link" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" placeholder="https://…/join/…" className="mt-1.5 h-12 w-full rounded-2xl border border-line bg-white px-4 text-[15px] outline-none focus:border-accent focus:ring-4 focus:ring-accent/10" />
+        {error && <p role="alert" className="mt-3 rounded-xl bg-coral-soft px-3 py-2 text-sm text-coral">{error}</p>}
+        <Button type="submit" variant="accent" size="lg" className="mt-6 w-full" icon={ArrowRight} disabled={busy || !value.trim()}>{busy ? 'Joining…' : 'Join community'}</Button>
+        <button type="button" onClick={() => dispatch({ type: 'NAV', patch: { view: 'landing' } })} className="mt-4 block text-sm text-muted transition hover:text-ink">Back to home</button>
+      </form>
+    </SplitShell>
+  );
+}
+
 export default function Onboarding() {
   const { state, dispatch } = useStore();
   const live = !!state.user; // onboarding only runs for a signed-in member
+
   // Live: the account already exists, so start at "interests" with the account name.
   const [step, setStep] = useState(live ? 1 : 0);
   const [name, setName] = useState(state.user?.name || '');
@@ -40,6 +91,7 @@ export default function Onboarding() {
   const [skills, setSkills] = useState([]);
   const [goals, setGoals] = useState([]);
   const [joined, setJoined] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   const toggle = (set) => (v) => set((arr) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]));
   const matched = useMemo(() => communitiesForProfile(interests, role, state.communities), [interests, role, state.communities]);
   const noCommunities = state.communities.length === 0;
@@ -48,6 +100,13 @@ export default function Onboarding() {
   const canNext = [name.trim().length >= 2, interests.length > 0 && name.trim().length >= 2, !!role, goals.length > 0, true][step]; // communities are optional: members can join them later
 
   const finish = () => dispatch({ type: 'ONBOARD', ...(state.user ? { memberId: `m_u_${state.user.id}` } : {}), profile: { name: name.trim().slice(0, 40), interests, role, skills, goals }, communities });
+  // Submit once; the store routes to the member app on success. Guard against double taps.
+  const handleFinish = () => { if (submitting) return; setSubmitting(true); finish(); };
+
+  // A member who signed up without an invite link has no community yet. Gate onboarding
+  // behind pasting a creator's invite link so they join the right community first.
+  // (Declared after all hooks so hook order stays stable across renders.)
+  if (live && state.needsCommunity) return <JoinCommunityGate />;
 
   const firstName = name.trim().split(' ')[0];
   const memberCard = (
@@ -61,7 +120,7 @@ export default function Onboarding() {
       </div>
       {(skills.length > 0 || interests.length > 0) && (
         <div className="mt-4 flex flex-wrap gap-1.5">
-          {skills.map((x) => <span key={x} className="rounded-full bg-gradient-to-r from-accent to-coral px-2.5 py-0.5 text-[11px] font-medium text-white">{x}</span>)}
+          {skills.map((x) => <span key={x} className="rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-medium text-white">{x}</span>)}
           {interests.map((x) => <span key={x} className="rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] text-white/80">{INTEREST_EMOJI[x] || '•'} {x}</span>)}
         </div>
       )}
@@ -95,6 +154,7 @@ export default function Onboarding() {
               <p className="mt-2 text-ink-2">Share ideas, build projects and find collaborators. Become more than a follower.</p>
               <label htmlFor="ob-name" className="mt-8 block text-sm font-medium text-ink">Your name</label>
               <input id="ob-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} autoComplete="name" placeholder="e.g. Aditi Rao" className="mt-1.5 h-12 w-full rounded-2xl border border-line bg-white px-4 text-[15px] outline-none focus:border-accent focus:ring-4 focus:ring-accent/10" />
+              {name.trim().length > 0 && name.trim().length < 2 && <p className="mt-1.5 text-xs text-coral">Enter at least 2 characters.</p>}
               <div className="mt-4">
                 <Button variant="primary" size="lg" className="w-full" disabled={!canNext} onClick={() => setStep(1)}>Continue</Button>
               </div>
@@ -104,6 +164,18 @@ export default function Onboarding() {
             <>
               <h1 className="font-display text-3xl font-semibold text-ink sm:text-4xl">What are you <span className="ai-gradient-animated">into</span>{firstName ? `, ${firstName}` : ''}?</h1>
               <p className="mb-6 mt-2 text-ink-2">Pick as many as you like. We’ll match you to the right communities.</p>
+              {live && (
+                <label className="mb-6 block max-w-sm">
+                  <span className="text-sm font-medium text-ink">Display name</span>
+                  <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} autoComplete="name" placeholder="e.g. Aditi Rao"
+                    className="mt-1.5 h-11 w-full rounded-xl border border-line bg-white px-3.5 text-[15px] outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10" />
+                  {name.trim().length > 0 && name.trim().length < 2 && <span className="mt-1 block text-xs text-coral">Enter at least 2 characters.</span>}
+                </label>
+              )}
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-sm font-medium text-ink">Interests</p>
+                {interests.length > 0 && <span className="text-xs text-muted">{interests.length} selected</span>}
+              </div>
               <Pick options={INTERESTS} emoji={INTEREST_EMOJI} value={interests} onToggle={toggle(setInterests)} />
             </>
           )}
@@ -114,7 +186,10 @@ export default function Onboarding() {
               <Pick options={ROLES} emoji={ROLE_EMOJI} value={role} multi={false} onToggle={(r) => { setRole(r); setSkills([]); }} />
               {role && ROLE_SKILLS[role] && (
                 <div className="mt-6 animate-fade-up">
-                  <p className="text-sm font-medium text-ink">Your skills <span className="font-normal text-muted">(optional)</span></p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-ink">Your skills <span className="font-normal text-muted">(optional)</span></p>
+                    {skills.length > 0 && <span className="text-xs text-muted">{skills.length} selected</span>}
+                  </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {ROLE_SKILLS[role].map((s) => {
                       const on = skills.includes(s);
@@ -129,6 +204,10 @@ export default function Onboarding() {
             <>
               <h1 className="font-display text-3xl font-semibold text-ink sm:text-4xl">Why are you <span className="ai-gradient-animated">here?</span></h1>
               <p className="mb-6 mt-2 text-ink-2">This helps us show you the right ideas and people.</p>
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-sm font-medium text-ink">Your goals</p>
+                {goals.length > 0 && <span className="text-xs text-muted">{goals.length} selected</span>}
+              </div>
               <Pick options={GOALS} emoji={GOAL_EMOJI} value={goals} onToggle={toggle(setGoals)} />
             </>
           )}
@@ -155,18 +234,12 @@ export default function Onboarding() {
           )}
         </div>
 
-        {step === 1 && live && (
-          <label className="mt-8 block max-w-sm">
-            <span className="text-sm font-medium text-ink">Display name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} className="mt-1.5 h-11 w-full rounded-xl border border-line bg-white px-3.5 outline-none focus:border-accent" />
-          </label>
-        )}
         {step > 0 && (
           <div className="mt-10 flex items-center justify-between">
             <Button variant="ghost" icon={ArrowLeft} disabled={live && step === 1} onClick={() => setStep((s) => s - 1)}>Back</Button>
             {step < 4
               ? <Button variant="primary" size="lg" disabled={!canNext} onClick={() => setStep((s) => s + 1)}>Continue <ArrowRight className="h-4 w-4" aria-hidden="true" /></Button>
-              : <Button variant="accent" size="lg" icon={Sparkles} disabled={!canNext} onClick={finish}>Enter the community</Button>}
+              : <Button variant="accent" size="lg" icon={Sparkles} disabled={!canNext || submitting} onClick={handleFinish}>{submitting ? 'Entering…' : 'Enter the community'}</Button>}
           </div>
         )}
       </div>
