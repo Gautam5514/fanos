@@ -8,7 +8,7 @@ import { Avatar, Button, Logo, cx } from './ui';
 import { Aurora, SplitShell } from './chrome';
 import CreatorOnboarding from './creator/CreatorOnboarding';
 import { SpaceIcon } from './icons';
-import { googleConfigured, googlePopup } from '../lib/firebase';
+import { envGoogleConfigured, googlePopup } from '../lib/firebase';
 
 const field = 'h-11 w-full rounded-2xl border border-line bg-white pl-11 pr-4 text-[15px] outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10';
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
@@ -197,18 +197,17 @@ export function AuthScreen() {
 
   const isSignup = tab === 'signup';
   // "Continue with Google" shows only when both the web app (Firebase config) and the server support it.
-  const [serverGoogle, setServerGoogle] = useState(false);
+  const [providers, setProviders] = useState({ google: false, firebase: null });
   const [gBusy, setGBusy] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false); // step 2: the email + password form
   const [gPending, setGPending] = useState(null); // verified Google token waiting for the role choice (new accounts)
   const lastTok = useRef(null); // the verified Google token of the attempt in flight
   useEffect(() => {
-    if (!googleConfigured) return undefined;
     let alive = true;
-    fetch('/api/auth/providers').then((r) => (r.ok ? r.json() : null)).then((d) => alive && setServerGoogle(!!d?.google)).catch(() => {});
+    fetch('/api/auth/providers').then((r) => (r.ok ? r.json() : null)).then((d) => alive && d && setProviders({ google: !!d.google, firebase: d.firebase || null })).catch(() => {});
     return () => { alive = false; };
   }, []);
-  const googleOn = googleConfigured && serverGoogle;
+  const googleOn = providers.google && (!!providers.firebase || envGoogleConfigured);
   // Without Google there is nothing to choose between, so go straight to the email form.
   const showEmail = emailOpen || !googleOn;
   const invited = !!state.viaInvite && isSignup;
@@ -241,7 +240,7 @@ export function AuthScreen() {
     setError(''); setGBusy(true);
     try {
       let tok = gPending;
-      if (!tok) { tok = await googlePopup(); if (!tok) return; } // popup closed — not an error
+      if (!tok) { tok = await googlePopup(providers.firebase); if (!tok) return; } // popup closed — not an error
       lastTok.current = tok;
       const invitedFan = !!state.inviteCommunity && state.viaInvite;
       const newRole = chosenRole || (invitedFan ? 'member' : isSignup ? role : null); // sign-up tab: creator unless the person picked Fan

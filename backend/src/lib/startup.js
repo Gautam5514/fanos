@@ -1,7 +1,8 @@
 // Startup health report printed when the API boots: environment, Supabase connection,
 // database tables, community data and optional features. Never prints secret values.
 import { adminDb, supabaseConfigured } from './supabase.js';
-import { llmEnabled } from './llm.js';
+import { llmInfo } from './llm.js';
+import { firebaseEnabled } from './firebase.js';
 import { youtubeEnabled } from './youtube.js';
 
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
@@ -67,9 +68,9 @@ export async function printStartupReport(port) {
   let dbOk = false;
   try { dbOk = await checkDatabase(); } catch (e) { row(FAIL, 'Database', e.message); }
 
-  row(llmEnabled() ? OK : OFF, 'AI (LLM)', llmEnabled()
-    ? `${process.env.OPENAI_MODEL || 'gpt-4o-mini'} via ${host(process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1')}`
-    : 'off — built-in engine (set OPENAI_API_KEY to enable)');
+  const ai = llmInfo();
+  row(ai ? OK : OFF, 'AI', ai ? `${ai.provider === 'groq' ? 'Groq' : 'OpenAI-compatible'} · smart ${ai.models.smart} · fast ${ai.models.fast}` : 'off — built-in engine (set GROQ_API_KEY to enable)');
+  row(firebaseEnabled() ? OK : OFF, 'Google sign-in', firebaseEnabled() ? 'on — Firebase service account loaded' : 'off — set FIREBASE_SERVICE_ACCOUNT_JSON to enable');
   row(youtubeEnabled() ? OK : OFF, 'YouTube lookup', youtubeEnabled()
     ? 'on — creators can auto-fill real subscriber counts'
     : 'off — manual entry (set YOUTUBE_API_KEY to enable)');

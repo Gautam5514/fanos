@@ -8,13 +8,15 @@ const cfg = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-export const googleConfigured = !!(cfg.apiKey && cfg.projectId && cfg.appId);
+// Build-time settings (optional fallback). Normally the backend supplies these at runtime via /api/auth/providers.
+export const envGoogleConfigured = !!(cfg.apiKey && cfg.projectId && cfg.appId);
 
 // Opens the Google popup. Resolves { idToken }, or null if the user simply closed the popup.
 // Throws an Error with a user-friendly message for real failures.
-export async function googlePopup() {
+export async function googlePopup(serverCfg) {
+  const useCfg = serverCfg?.apiKey && serverCfg?.appId ? serverCfg : cfg;
   const [{ initializeApp, getApps }, { getAuth, GoogleAuthProvider, signInWithPopup, signOut }] = await Promise.all([import('firebase/app'), import('firebase/auth')]);
-  const app = getApps()[0] || initializeApp(cfg);
+  const app = getApps()[0] || initializeApp(useCfg);
   const auth = getAuth(app);
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });

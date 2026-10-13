@@ -39,6 +39,36 @@ function credentials() {
 
 export const firebaseEnabled = () => !!credentials();
 
+// The PUBLIC Firebase web-app settings the browser needs to open the Google popup (apiKey, appId…).
+// They are identifiers, not secrets, and the browser would receive them anyway. We read them from
+// Firebase itself using the service account, so the host needs no extra settings — or you can pin
+// them with FIREBASE_WEB_API_KEY + FIREBASE_WEB_APP_ID.
+let webCfg = { at: 0, value: null };
+export async function webConfig() {
+  const c = credentials();
+  if (!c) return null;
+  const projectId = c.project_id;
+  if (process.env.FIREBASE_WEB_API_KEY && process.env.FIREBASE_WEB_APP_ID) {
+    return { apiKey: process.env.FIREBASE_WEB_API_KEY, appId: process.env.FIREBASE_WEB_APP_ID, projectId, authDomain: process.env.FIREBASE_WEB_AUTH_DOMAIN || `${projectId}.firebaseapp.com` };
+  }
+  const fresh = webCfg.value ? 3_600_000 : 120_000; // keep a good answer for an hour, retry a failure after 2 minutes
+  if (Date.now() - webCfg.at < fresh) return webCfg.value;
+  let value = null;
+  try {
+    const { access_token: token } = await cert(c).getAccessToken();
+    const H = { Authorization: `Bearer ${token}` };
+    const base = `https://firebase.googleapis.com/v1beta1/projects/${projectId}/webApps`;
+    const list = await (await fetch(base, { headers: H, signal: AbortSignal.timeout(6000) })).json();
+    const app = list.apps?.[0];
+    if (app) {
+      const cfg = await (await fetch(`${base}/${app.appId}/config`, { headers: H, signal: AbortSignal.timeout(6000) })).json();
+      if (cfg.apiKey && cfg.appId) value = { apiKey: cfg.apiKey, appId: cfg.appId, projectId: cfg.projectId || projectId, authDomain: cfg.authDomain || `${projectId}.firebaseapp.com` };
+    }
+  } catch { /* leave null; the button just stays hidden and we retry soon */ }
+  webCfg = { at: Date.now(), value };
+  return value;
+}
+
 function app() {
   if (!getApps().length) initializeApp({ credential: cert(credentials()) });
   return getApps()[0];

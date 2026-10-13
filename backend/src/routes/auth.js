@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { adminDb, authClient, supabaseConfigured } from '../lib/supabase.js';
 import { createProfile, EMAIL_RE, makeCreator, fromProfile, getCommunityCreator, getProfile, getUser, passwordWeakness, publicUser, rateLimited, rateLimitedKey, setCommunityId } from '../lib/auth.js';
 import { readJson } from '../lib/http.js';
-import { firebaseEnabled, verifyGoogleIdToken } from '../lib/firebase.js';
+import { firebaseEnabled, verifyGoogleIdToken, webConfig } from '../lib/firebase.js';
 import { safeAvatar, saveGoogleAvatar } from '../lib/avatar.js';
 
 const router = Router();
@@ -62,7 +62,11 @@ router.post('/signup', async (req, res) => {
 });
 
 // Which sign-in methods this server offers (the UI hides "Continue with Google" when off).
-router.get('/providers', (req, res) => res.json({ google: firebaseEnabled() }));
+router.get('/providers', async (req, res) => {
+  const google = firebaseEnabled();
+  const firebase = google ? await webConfig() : null; // public web settings, so the site needs no build-time Firebase variables
+  res.json({ google: google && !!firebase, firebase });
+});
 
 // Google sign-in. The browser sends a Firebase ID token; we verify it, find or create the account
 // for that verified email, then open a regular Supabase session (same cookies as email login).
