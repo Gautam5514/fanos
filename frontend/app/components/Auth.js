@@ -1,13 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Trash2, Crown, UserPlus, Mail, Lock, User, ArrowLeft, Camera, PlaySquare, AtSign, Sparkles, Check, Zap, Users2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Trash2, Crown, BadgeCheck, Lightbulb, Rocket, RefreshCw, UserPlus, Mail, Lock, User, ArrowLeft, Camera, PlaySquare, AtSign, Sparkles, Check, Zap, Users2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { CREATOR } from '../lib/seed';
 import { Avatar, Button, Logo, cx } from './ui';
 import { Aurora, SplitShell } from './chrome';
+import CreatorOnboarding from './creator/CreatorOnboarding';
+import { SpaceIcon } from './icons';
+import { googleConfigured, googlePopup } from '../lib/firebase';
 
-const field = 'h-12 w-full rounded-2xl border border-line bg-white pl-11 pr-4 text-[15px] outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10';
+const field = 'h-11 w-full rounded-2xl border border-line bg-white pl-11 pr-4 text-[15px] outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10';
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
 const COMMON_PW = new Set(['password', 'password1', 'password123', '12345678', '123456789', '1234567890', 'qwerty123', 'qwertyuiop', 'iloveyou', 'letmein1', 'admin123', 'welcome1', 'passw0rd', 'abc12345']);
 
@@ -39,49 +42,143 @@ function Field({ id, label, icon: Icon, trailing, invalid, ...props }) {
   );
 }
 
+const fmtN = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1).replace(/\.0$/, '')}K` : String(n));
+
+// Loads the public invite preview for a community id. status: idle | loading | ok | invalid | error.
+// "invalid" (404) and "error" (network/server) are different: only the second is worth retrying.
+export function useInvite(communityId, enabled = true) {
+  const [attempt, setAttempt] = useState(0);
+  const [res, setRes] = useState({ key: '', status: 'idle', data: null });
+  const key = `${communityId}:${attempt}`;
+  useEffect(() => {
+    if (!enabled || !communityId) return undefined;
+    let alive = true;
+    const done = (status, data = null) => alive && setRes({ key, status, data });
+    fetch(`/api/public/community/${encodeURIComponent(communityId)}`)
+      .then(async (r) => {
+        if (r.status === 404) done('invalid');
+        else if (!r.ok) done('error');
+        else done('ok', await r.json());
+      })
+      .catch(() => done('error'));
+    return () => { alive = false; };
+  }, [communityId, enabled, attempt, key]);
+  const retry = () => setAttempt((n) => n + 1);
+  if (!enabled) return { status: 'idle', data: null, retry };
+  if (!communityId) return { status: 'invalid', data: null, retry };
+  if (res.key !== key) return { status: 'loading', data: null, retry }; // result is for an older link
+  return { status: res.status, data: res.data, retry };
+}
+
 // Shown on signup when a follower arrives through a creator's invite link (/join/:creatorId):
 // who they're joining, loaded from the public community endpoint (no sign-in needed).
-function InvitePreviewCard({ communityId }) {
-  const [c, setC] = useState(null);
-  useEffect(() => {
-    if (!communityId) return undefined;
-    let alive = true;
-    fetch(`/api/public/community/${encodeURIComponent(communityId)}`).then((r) => (r.ok ? r.json() : null)).then((d) => alive && setC(d || { invalid: true })).catch(() => alive && setC({ invalid: true }));
-    return () => { alive = false; };
-  }, [communityId]);
-  if (!communityId) return (
-    <div className="mt-6 max-w-md rounded-2xl border border-amber/30 bg-amber-soft/60 p-4 text-sm text-ink">
-      This invite link is invalid or missing. Ask the creator for their current invite link, then create your account.
+export function InvitePreviewCard({ invite }) {
+  const { status, data: c, retry } = invite;
+  if (status === 'idle') return null;
+  if (status === 'loading') return <div className="mt-6 h-[104px] max-w-md animate-pulse rounded-2xl bg-line-2" aria-hidden="true" />;
+  if (status === 'invalid') return (
+    <div role="alert" className="mt-6 max-w-md rounded-2xl border border-amber/30 bg-amber-soft/60 p-4 text-sm text-ink">
+      <p className="font-medium">This invite link isn’t valid.</p>
+      <p className="mt-0.5 text-ink-2">It may be mistyped or expired. Ask the creator for their current link — you can still create an account and paste it afterwards.</p>
     </div>
   );
-  if (!c) return <div className="mt-6 h-[92px] max-w-md animate-pulse rounded-2xl bg-line-2" aria-hidden="true" />;
-  if (c.invalid) return (
-    <div className="mt-6 max-w-md rounded-2xl border border-amber/30 bg-amber-soft/60 p-4 text-sm text-ink">
-      This invite link is invalid or missing. Ask the creator for their current invite link, then create your account.
+  if (status === 'error') return (
+    <div role="alert" className="mt-6 flex max-w-md items-center justify-between gap-3 rounded-2xl border border-line bg-white p-4 text-sm text-ink-2">
+      <span>Couldn’t load this invite right now.</span>
+      <button type="button" onClick={retry} className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-ink transition hover:border-accent/40 hover:text-accent"><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Try again</button>
     </div>
   );
   const name = c.creator?.name || 'the creator';
-  const fmtN = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n));
   return (
     <div className="relative mt-6 max-w-md overflow-hidden rounded-2xl border border-accent/20 bg-white p-4 shadow-card">
       <div aria-hidden="true" className="absolute -right-10 -top-12 h-28 w-28 rounded-full bg-gradient-to-br from-accent/20 to-coral/20 blur-2xl" />
       <div className="relative flex items-center gap-3">
-        <Avatar name={name} size={44} />
+        <Avatar name={name} size={44} src={c.creator?.avatar} />
         <div className="min-w-0">
           <p className="text-xs font-medium text-accent">You’re invited to join</p>
-          <p className="truncate font-display text-lg font-semibold text-ink">{c.creator ? `${name.split(' ')[0]}’s community` : 'This community'}</p>
+          <p className="truncate font-display text-lg font-semibold text-ink">{c.creator?.name ? `${name.split(' ')[0]}’s community` : 'This community'}</p>
           <p className="truncate text-xs text-muted">
-            {[c.creator?.handle, c.creator?.niche, ...(c.creator?.platforms || []).map((p) => `${fmtN(p.followers)} on ${p.name}`)].filter(Boolean).join(' · ') || 'Share ideas, build projects and find collaborators'}
+            {[c.creator?.handle, c.creator?.niche, ...(c.creator?.platforms || []).filter((p) => p.followers > 0).slice(0, 1).map((p) => `${fmtN(p.followers)} on ${p.name}`)].filter(Boolean).join(' · ') || 'Share ideas, build projects and find collaborators'}
           </p>
         </div>
       </div>
-      <p className="relative mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-2">
-        <span><b className="font-semibold text-ink">{c.members}</b> member{c.members === 1 ? '' : 's'}</span>
-        <span><b className="font-semibold text-ink">{c.ideas}</b> idea{c.ideas === 1 ? '' : 's'}</span>
-        {c.communities.length > 0 && <span className="truncate">{c.communities.slice(0, 3).map((x) => `${x.emoji} ${x.name}`).join('  ')}</span>}
-      </p>
-      {!c.ready && <p className="relative mt-2 text-xs text-amber">The creator is still setting things up — you can already create your account.</p>}
+      {!c.ready && <p className="relative mt-3 text-xs text-amber">The creator is still setting things up — you can already create your account.</p>}
     </div>
+  );
+}
+
+// Right-hand panel on /join/:id — the creator's brand, social proof and what joining gets you.
+function InvitePanel({ invite }) {
+  const { status, data: c } = invite;
+  const name = c?.creator?.name || '';
+  const first = name.split(' ')[0];
+  const platforms = (c?.creator?.platforms || []).filter((p) => p.followers > 0);
+  const reach = platforms.reduce((s, p) => s + p.followers, 0);
+  const spaces = c?.communities || [];
+  const stats = [[c?.members ?? 0, 'Members'], [c?.ideas ?? 0, 'Ideas shared'], [spaces.length, 'Spaces']];
+  const gets = [
+    [Lightbulb, 'Pitch ideas', first ? `Share what you want ${first} to build or cover.` : 'Share what you want built or covered.'],
+    [Users2, 'Find collaborators', 'Get matched by skills, not follower count.'],
+    [Rocket, 'Build real projects', 'Ideas that rise to the top become shipped work.'],
+  ];
+  if (status === 'loading' || status === 'idle') return <div className="mx-auto w-full max-w-md animate-pulse space-y-4" aria-hidden="true"><div className="h-40 rounded-3xl bg-white/10" /><div className="h-32 rounded-3xl bg-white/10" /></div>;
+  if (status !== 'ok') return null;
+  return (
+    <div className="max-w-md">
+      <div className="rounded-3xl border border-white/15 bg-white/[.07] p-6 backdrop-blur-xl">
+        <div className="flex items-center gap-4">
+          <Avatar name={name || 'Creator'} size={64} src={c.creator?.avatar} className="ring-4 ring-white/15" />
+          <div className="min-w-0">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.14em] text-white/55">{c.ready ? <><BadgeCheck className="h-3.5 w-3.5 text-[#b9a8ff]" aria-hidden="true" /> Creator community</> : 'Community'}</p>
+            <p className="truncate font-display text-2xl font-semibold text-white">{name || 'A FanOS creator'}</p>
+            <p className="truncate text-sm text-white/60">{[c.creator?.handle, c.creator?.niche].filter(Boolean).join(' · ') || 'Opening soon'}</p>
+          </div>
+        </div>
+        {platforms.length > 0 && (
+          <div className="mt-5 flex flex-wrap gap-2">
+            {platforms.map((p) => <span key={p.name} className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/85 ring-1 ring-white/10"><b className="font-semibold text-white">{fmtN(p.followers)}</b> on {p.name}</span>)}
+            {platforms.length > 1 && <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/60">{fmtN(reach)} total reach</span>}
+          </div>
+        )}
+        <dl className="mt-5 grid grid-cols-3 gap-2">
+          {stats.map(([n, l]) => (
+            <div key={l} className="rounded-2xl bg-white/[.08] px-3 py-3 text-center ring-1 ring-white/10">
+              <dt className="sr-only">{l}</dt>
+              <dd className="font-display text-2xl font-semibold text-white">{n.toLocaleString('en-US')}</dd>
+              <p className="text-[11px] text-white/55" aria-hidden="true">{l}</p>
+            </div>
+          ))}
+        </dl>
+        {spaces.length > 0 && (
+          <div className="mt-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[.12em] text-white/50">Spaces you can join</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {spaces.slice(0, 6).map((s) => <span key={s.name} className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/85"><SpaceIcon name={s.name} className="h-3.5 w-3.5" />{s.name}</span>)}
+              {spaces.length > 6 && <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/55">+{spaces.length - 6} more</span>}
+            </div>
+          </div>
+        )}
+      </div>
+      <ul className="mt-5 space-y-2">
+        {gets.map(([Icon, t, d]) => (
+          <li key={t} className="flex items-start gap-3 rounded-2xl bg-white/[.06] px-4 py-3 ring-1 ring-white/10">
+            <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[#b9a8ff]" aria-hidden="true" />
+            <span className="text-sm text-white/90"><b className="font-semibold text-white">{t}</b><span className="block text-xs text-white/55">{d}</span></span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function GoogleLogo() {
+  return (
+    <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z" />
+      <path fill="#FBBC05" d="M10.5 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.9-6.1z" />
+      <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z" />
+    </svg>
   );
 }
 
@@ -89,7 +186,7 @@ export function AuthScreen() {
   const { state, dispatch, auth } = useStore();
   // The tab lives in the store so the URL (/auth/login ↔ /auth/signup) and Back button stay in sync.
   const tab = state.authTab === 'signup' ? 'signup' : 'login';
-  const [role, setRole] = useState(state.authRole || 'member');
+  const [role, setRole] = useState(state.authRole || 'creator');
   const [f, setF] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -99,6 +196,23 @@ export function AuthScreen() {
   const blur = (k) => () => setTouched((t) => ({ ...t, [k]: true }));
 
   const isSignup = tab === 'signup';
+  // "Continue with Google" shows only when both the web app (Firebase config) and the server support it.
+  const [serverGoogle, setServerGoogle] = useState(false);
+  const [gBusy, setGBusy] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false); // step 2: the email + password form
+  const [gPending, setGPending] = useState(null); // verified Google token waiting for the role choice (new accounts)
+  const lastTok = useRef(null); // the verified Google token of the attempt in flight
+  useEffect(() => {
+    if (!googleConfigured) return undefined;
+    let alive = true;
+    fetch('/api/auth/providers').then((r) => (r.ok ? r.json() : null)).then((d) => alive && setServerGoogle(!!d?.google)).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const googleOn = googleConfigured && serverGoogle;
+  // Without Google there is nothing to choose between, so go straight to the email form.
+  const showEmail = emailOpen || !googleOn;
+  const invited = !!state.viaInvite && isSignup;
+  const invite = useInvite(state.inviteCommunity, invited);
   const pw = useMemo(() => scorePassword(f.password), [f.password]);
   const emailValid = EMAIL_RE.test(f.email.trim());
   const nameValid = f.name.trim().length >= 2;
@@ -120,7 +234,26 @@ export function AuthScreen() {
     } finally { setBusy(false); }
   };
 
-  const switchTab = (next) => { dispatch({ type: 'NAV', patch: { authTab: next } }); setError(''); setTouched({}); };
+  // Google: existing accounts just sign in. A NEW account needs a role first — we use the invite link
+  // (fan), the role the person explicitly picked, or else ask them (never guess).
+  const googleGo = async (chosenRole) => {
+    if (gBusy || busy) return;
+    setError(''); setGBusy(true);
+    try {
+      let tok = gPending;
+      if (!tok) { tok = await googlePopup(); if (!tok) return; } // popup closed — not an error
+      lastTok.current = tok;
+      const invitedFan = !!state.inviteCommunity && state.viaInvite;
+      const newRole = chosenRole || (invitedFan ? 'member' : isSignup ? role : null); // sign-up tab: creator unless the person picked Fan
+      await auth.google({ idToken: tok.idToken, mode: newRole ? 'signup' : 'login', ...(newRole ? { role: newRole } : {}), ...(newRole === 'member' && state.inviteCommunity ? { community: state.inviteCommunity } : {}) });
+    } catch (err) {
+      if (err.code === 'no-account') { setGPending((p) => p || lastTok.current); return; }
+      if (err.status === 401) setGPending(null); // token expired → start over
+      setError(err.status || err.message ? err.message : 'Google sign-in failed. Please try again.');
+    } finally { setGBusy(false); }
+  };
+
+  const switchTab = (next) => { dispatch({ type: 'NAV', patch: { authTab: next } }); setError(''); setTouched({}); setEmailOpen(false); };
 
   const glimpse = [
     ['🔥', 'See what your audience asks for most', 'Trends'],
@@ -134,60 +267,88 @@ export function AuthScreen() {
   ];
 
   return (
-    <div className="min-h-screen bg-paper lg:grid lg:grid-cols-[minmax(0,520px)_1fr]">
+    <div className="min-h-screen bg-paper lg:grid lg:h-screen lg:grid-cols-[minmax(0,560px)_1fr] lg:overflow-hidden">
       {/* ───────── Form side (left) ───────── */}
-      <div className="relative flex min-h-screen flex-col overflow-x-clip">
+      <div className="relative flex min-h-screen flex-col overflow-x-clip lg:h-screen lg:min-h-0">
         <Aurora className="opacity-60 lg:hidden" />
-        <header className="relative z-10 flex items-center justify-between px-6 py-6 sm:px-10">
+        <header className="relative z-10 flex shrink-0 items-center justify-between px-6 py-4 sm:px-10">
           <Logo />
           <button onClick={() => dispatch({ type: 'NAV', patch: { view: 'landing' } })} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white/80 px-3 py-1.5 text-[13px] text-ink-2 backdrop-blur transition hover:border-ink/20 hover:text-ink">
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> Home
           </button>
         </header>
 
-        <main className="relative z-10 flex w-full flex-1 flex-col justify-center px-6 pb-10 sm:px-10">
-          {state.serverError && <p role="alert" className="mb-5 rounded-2xl border border-amber/30 bg-amber-soft px-4 py-3 text-sm text-ink">⚠️ {state.serverError}</p>}
+        <main className="relative z-10 flex min-h-0 w-full flex-1 flex-col overflow-y-auto px-6 pb-4 sm:px-10">
+          <div className="my-auto w-full py-2">
+          {state.serverError && <p role="alert" className="mb-4 rounded-2xl border border-amber/30 bg-amber-soft px-4 py-3 text-sm text-ink">⚠️ {state.serverError}</p>}
 
-          <div key={tab} className="animate-fade-up">
-            <h1 className="font-display text-[2.6rem] font-semibold leading-[1.05] text-ink">{isSignup ? <>Create <span className="ai-gradient-animated">account</span></> : <>Welcome <span className="ai-gradient-animated">back</span></>}</h1>
-            <p className="mt-2 max-w-sm text-[15px] text-ink-2">{isSignup ? 'Step into a community that builds with you — ideas, talent and projects in one place.' : 'Log in to your FanOS community and pick up where you left off.'}</p>
+          <div key={tab} className="animate-fade-up mb-1">
+            <h1 className="font-display text-[2.1rem] font-semibold leading-[1.05] text-ink sm:text-[2.35rem]">{isSignup ? <>Create <span className="ai-gradient-animated">account</span></> : <>Welcome <span className="ai-gradient-animated">back</span></>}</h1>
+            <p className="mt-1.5 max-w-sm text-sm text-ink-2 [@media(max-height:700px)]:hidden">{isSignup ? 'Ideas, talent and projects — one community that builds with you.' : 'Log in to pick up where you left off.'}</p>
           </div>
 
-          {state.viaInvite && isSignup && <InvitePreviewCard communityId={state.inviteCommunity} />}
-
-          {/* Segmented control with sliding thumb */}
-          <div role="tablist" aria-label="Sign up or log in" className="relative mt-7 grid grid-cols-2 rounded-full bg-line-2 p-1">
-            <span aria-hidden="true" className={cx('absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded-full bg-white shadow-sm transition-transform duration-300 ease-[cubic-bezier(.16,1,.3,1)]', isSignup ? 'translate-x-0' : 'translate-x-full')} />
-            {[['signup', 'Create account'], ['login', 'Log in']].map(([id, l]) => (
-              <button key={id} role="tab" aria-selected={tab === id} onClick={() => switchTab(id)} className={cx('relative rounded-full py-2 text-sm font-medium transition-colors', tab === id ? 'text-ink' : 'text-muted hover:text-ink')}>{l}</button>
-            ))}
-          </div>
+          {invited && <InvitePreviewCard invite={invite} />}
 
           {isSignup && !state.viaInvite && (
-            <fieldset className="mt-5">
-              <legend className="mb-2 text-sm font-medium text-ink">I am a…</legend>
-              <div role="radiogroup" aria-label="Account type" className="grid grid-cols-2 gap-2">
-                {[['member', 'Fan / Member', UserPlus], ['creator', 'Creator', Crown]].map(([id, l, Icon]) => {
-                  const on = role === id;
-                  return (
-                    <button key={id} type="button" role="radio" aria-checked={on} onClick={() => setRole(id)}
-                      className={cx('flex h-11 items-center justify-center gap-2 rounded-xl border text-sm font-medium transition', on ? 'border-accent bg-accent-soft text-accent ring-2 ring-accent/15' : 'border-line bg-white text-ink-2 hover:border-ink/20 hover:text-ink')}>
-                      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />{l}
-                    </button>
-                  );
-                })}
-              </div>
-            </fieldset>
+            <div role="radiogroup" aria-label="I am a…" className="relative mt-4 grid max-w-md grid-cols-2 rounded-full bg-line-2 p-1">
+              <span aria-hidden="true" className={cx('absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded-full bg-white shadow-sm transition-transform duration-300 ease-[cubic-bezier(.16,1,.3,1)]', role === 'creator' ? 'translate-x-0' : 'translate-x-full')} />
+              {[['creator', 'I’m a Creator', Crown], ['member', 'I’m a Fan', UserPlus]].map(([id, l, Icon]) => (
+                <button key={id} type="button" role="radio" aria-checked={role === id} onClick={() => setRole(id)}
+                  className={cx('relative flex h-9 items-center justify-center gap-1.5 rounded-full text-sm font-medium transition-colors', role === id ? 'text-ink' : 'text-muted hover:text-ink')}>
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />{l}
+                </button>
+              ))}
+            </div>
           )}
 
-          <form onSubmit={submit} noValidate className="mt-6 max-w-md space-y-4">
+          {googleOn && gPending && (
+            <div role="group" aria-label="Choose your account type" className="mt-6 max-w-md animate-fade-up">
+              {/* Primary: creator */}
+              <button type="button" disabled={gBusy} onClick={() => googleGo('creator')}
+                className="group relative w-full overflow-hidden rounded-3xl bg-night p-6 text-left text-white shadow-pop ring-1 ring-white/10 transition hover:-translate-y-0.5 disabled:opacity-70">
+                <Aurora tone="dark" />
+                <span className="relative inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.14em] text-white/85"><Crown className="h-3.5 w-3.5" aria-hidden="true" /> For creators</span>
+                <span className="relative mt-3 block font-display text-2xl font-semibold leading-tight">Build your <span className="ai-gradient-animated">community</span></span>
+                <span className="relative mt-1.5 block text-sm text-white/70">Turn your audience into collaborators — your own space, your own invite link.</span>
+                <ul className="relative mt-4 space-y-1.5 text-[13px] text-white/85">
+                  {['Set up in about 2 minutes', 'AI surfaces your audience’s best ideas', 'One link to invite every follower'].map((t) => <li key={t} className="flex items-center gap-2"><Check className="h-3.5 w-3.5 text-[#b9a8ff]" aria-hidden="true" />{t}</li>)}
+                </ul>
+                <span className="relative mt-5 flex h-12 items-center justify-center gap-2 rounded-full bg-white text-[15px] font-semibold text-ink transition group-hover:bg-white/90">{gBusy ? 'Please wait…' : 'Continue as creator'}<ArrowLeft className="h-4 w-4 rotate-180" aria-hidden="true" /></span>
+              </button>
+
+              {/* Secondary: fan / member */}
+              <div className="mt-3 flex items-center gap-3 rounded-2xl border border-line bg-white/80 p-3.5 backdrop-blur">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-line-2 text-ink-2"><UserPlus className="h-5 w-5" aria-hidden="true" /></span>
+                <span className="min-w-0 flex-1 text-sm"><span className="font-semibold text-ink">Joining as a fan?</span><span className="block text-xs text-muted">Best with your creator’s invite link.</span></span>
+                <button type="button" disabled={gBusy} onClick={() => googleGo('member')} className="shrink-0 rounded-full border border-line bg-white px-3.5 py-1.5 text-xs font-semibold text-ink transition hover:border-accent/40 hover:text-accent disabled:opacity-60">Continue as fan</button>
+              </div>
+              <button type="button" onClick={() => { setGPending(null); setError(''); }} className="mt-3 text-xs text-muted transition hover:text-ink">Use a different Google account</button>
+            </div>
+          )}
+          {googleOn && !gPending && !emailOpen && (
+            <div className="mt-6 max-w-md space-y-3">
+              <button type="button" onClick={() => googleGo()} disabled={gBusy || busy}
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-full border border-line bg-white text-[15px] font-medium text-ink shadow-sm transition hover:-translate-y-px hover:border-ink/20 hover:shadow-md active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-60">
+                <GoogleLogo />{gBusy ? 'Please wait…' : isSignup ? 'Sign up with Google' : 'Continue with Google'}
+              </button>
+              <Button variant="primary" size="lg" icon={Mail} className="w-full" onClick={() => { setEmailOpen(true); setError(''); }}>{isSignup ? 'Sign up with email' : 'Log in with email'}</Button>
+              {error && <p role="alert" className="rounded-xl bg-coral-soft px-3 py-2 text-sm text-coral">{error}</p>}
+            </div>
+          )}
+
+          {googleOn && !gPending && emailOpen && (
+            <button type="button" onClick={() => { setEmailOpen(false); setError(''); }} className="mt-5 inline-flex items-center gap-1.5 text-sm text-muted transition hover:text-ink"><ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> Other ways to {isSignup ? 'sign up' : 'log in'}</button>
+          )}
+
+          {showEmail && !gPending && (
+          <form onSubmit={submit} noValidate className="mt-4 max-w-md space-y-3">
             {isSignup && (
               <Field id="a-name" label="Your name" icon={User} value={f.name} onChange={set('name')} onBlur={blur('name')} invalid={touched.name && !nameValid} maxLength={60} autoComplete="name" placeholder="e.g. Aditi Rao" required />
             )}
-            {isSignup && touched.name && !nameValid && <p className="-mt-2 text-xs text-coral">Enter your name (at least 2 characters).</p>}
+            {isSignup && touched.name && !nameValid && <p className="-mt-1.5 text-xs text-coral">Enter your name (at least 2 characters).</p>}
 
             <Field id="a-email" label="Email" icon={Mail} type="email" value={f.email} onChange={set('email')} onBlur={blur('email')} invalid={touched.email && f.email.length > 0 && !emailValid} maxLength={254} autoComplete="email" placeholder="you@example.com" required />
-            {touched.email && f.email.length > 0 && !emailValid && <p className="-mt-2 text-xs text-coral">Enter a valid email address.</p>}
+            {touched.email && f.email.length > 0 && !emailValid && <p className="-mt-1.5 text-xs text-coral">Enter a valid email address.</p>}
 
             <div>
               <div className="flex items-center justify-between">
@@ -210,33 +371,30 @@ export function AuthScreen() {
                 </button>
               </div>
               {isSignup && f.password.length > 0 && (
-                <div className="mt-2">
-                  <div className="flex gap-1" aria-hidden="true">
-                    {[1, 2, 3, 4].map((n) => <span key={n} className={cx('h-1.5 flex-1 rounded-full transition-colors', n <= pw.score ? pw.tone : 'bg-line-2')} />)}
+                <div className="mt-1.5 flex items-center gap-3">
+                  <div className="flex flex-1 gap-1" aria-hidden="true">
+                    {[1, 2, 3, 4].map((n) => <span key={n} className={cx('h-1 flex-1 rounded-full transition-colors', n <= pw.score ? pw.tone : 'bg-line-2')} />)}
                   </div>
-                  <p className={cx('mt-1 text-xs', pw.ok ? 'text-muted' : 'text-coral')}>
-                    {pw.ok ? <span className="inline-flex items-center gap-1 text-mint"><ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" /> {pw.label} password</span> : pw.reason}
-                  </p>
+                  <p className={cx('shrink-0 text-xs', pw.ok ? 'text-mint' : 'text-coral')}>{pw.ok ? `${pw.label} password` : pw.reason}</p>
                 </div>
               )}
             </div>
 
-            {isSignup && role === 'creator' && (
-              <p className="text-xs text-muted">You’ll set up your community profile right after you create your account.</p>
-            )}
             {error && <p role="alert" className="rounded-xl bg-coral-soft px-3 py-2 text-sm text-coral">{error}</p>}
-            <Button type="submit" variant="primary" size="lg" arrow className="w-full" disabled={busy || !canSubmit}>{busy ? 'Please wait…' : isSignup ? 'Create account' : 'Log in'}</Button>
+            <Button type="submit" variant="primary" size="lg" arrow className="h-11 w-full" disabled={busy || !canSubmit}>{busy ? 'Please wait…' : isSignup ? 'Create account' : 'Log in'}</Button>
           </form>
+          )}
 
-          <p className="mt-5 max-w-md text-sm text-muted">
-            {isSignup ? 'Already have an account? ' : 'New here? '}
-            <button type="button" onClick={() => switchTab(isSignup ? 'login' : 'signup')} className="font-medium text-accent hover:underline">
+          <p className="mt-4 max-w-md border-t border-line pt-4 text-sm text-muted">
+            {isSignup ? 'Already have an account? ' : 'New to FanOS? '}
+            <button type="button" onClick={() => switchTab(isSignup ? 'login' : 'signup')} className="font-semibold text-accent underline-offset-4 hover:underline">
               {isSignup ? 'Log in' : 'Create an account'}
             </button>
           </p>
+          </div>
         </main>
 
-        <footer className="relative z-10 flex flex-col gap-3 px-6 py-5 text-xs text-muted sm:flex-row sm:items-center sm:justify-between sm:px-10">
+        <footer className="relative z-10 flex shrink-0 flex-col gap-2 px-6 py-3 [@media(max-height:700px)]:hidden text-xs text-muted sm:flex-row sm:items-center sm:justify-between sm:px-10">
           <span>© {new Date().getFullYear()} FanOS — the operating system for your audience.</span>
           <SocialLinks />
         </footer>
@@ -254,13 +412,21 @@ export function AuthScreen() {
         </div>
         <div aria-hidden="true" className="bg-grid-dark pointer-events-none absolute inset-0 opacity-60" />
 
-        <div className="relative flex h-full flex-col justify-between p-12">
+        <div className="relative flex h-full flex-col justify-between p-10 xl:p-12">
           <div />
+          {invited && (invite.status === 'ok' || invite.status === 'loading') ? (
+            <div>
+              <h2 className="mb-7 max-w-md text-balance font-display text-4xl font-semibold leading-[1.1] text-white xl:text-5xl">
+                {invite.data?.creator?.name ? <>Build with <span className="ai-gradient-animated">{invite.data.creator.name.split(' ')[0]}.</span></> : <>Become more than <span className="ai-gradient-animated">a follower.</span></>}
+              </h2>
+              <InvitePanel invite={invite} />
+            </div>
+          ) : (
           <div className="max-w-md">
             <h2 className="text-balance font-display text-4xl font-semibold leading-[1.1] text-white xl:text-5xl">
               {isSignup ? <>Turn followers into <span className="ai-gradient-animated">collaborators.</span></> : <>Your community, <span className="ai-gradient-animated">organized by AI.</span></>}
             </h2>
-            <div className="mt-8 rounded-3xl border border-white/15 bg-white/[.07] p-5 backdrop-blur-xl">
+            <div className="mt-6 rounded-3xl border border-white/15 bg-white/[.07] p-5 backdrop-blur-xl [@media(max-height:640px)]:hidden">
               <p className="flex items-center gap-2 text-sm font-semibold text-white"><Sparkles className="h-4 w-4 text-[#b9a8ff]" aria-hidden="true" /> What FanOS surfaces for you</p>
               <ul className="mt-4 space-y-2">
                 {glimpse.map(([e, t, tag], i) => (
@@ -272,7 +438,7 @@ export function AuthScreen() {
                 ))}
               </ul>
             </div>
-            <ul className="mt-6 flex flex-wrap gap-2">
+            <ul className="mt-5 flex flex-wrap gap-2 [@media(max-height:820px)]:hidden">
               {perks.map(({ icon: Icon, text }) => (
                 <li key={text} className="inline-flex items-center gap-2 rounded-full bg-white/[.07] px-3 py-1.5 text-[13px] text-white/80 ring-1 ring-white/10">
                   <Icon className="h-3.5 w-3.5 text-white" aria-hidden="true" />{text}
@@ -280,6 +446,7 @@ export function AuthScreen() {
               ))}
             </ul>
           </div>
+          )}
           <p className="text-sm text-white/45">Followers → Communities → Ideas → AI Signals → Action</p>
         </div>
       </aside>
@@ -312,7 +479,7 @@ function SocialLinks() {
     <nav aria-label="Social links" className="flex items-center gap-1.5">
       {SOCIALS.map(({ name, href, path }) => (
         <a key={name} href={href} target="_blank" rel="noopener noreferrer" aria-label={name} title={name}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-line bg-white/70 text-muted transition hover:-translate-y-0.5 hover:border-accent/40 hover:text-accent hover:shadow-sm">
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-line bg-white/70 text-muted transition hover:-translate-y-0.5 hover:border-accent/40 hover:text-accent hover:shadow-sm">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d={path} /></svg>
         </a>
       ))}
@@ -328,7 +495,7 @@ const PLATFORM_META = [
 const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n));
 
 // Live preview of the invite card followers see when they open the join link.
-function InvitePreview({ f }) {
+function InvitePreview({ f, avatar }) {
   const name = f.name.trim() || 'Your name';
   const first = name.split(' ')[0];
   const bare = (h) => String(h || '').trim().replace(/^@+/, '').replace(/\s+/g, '');
@@ -342,7 +509,7 @@ function InvitePreview({ f }) {
     <div>
       <div className="rounded-3xl bg-white p-6 text-left shadow-[0_30px_80px_-20px_rgba(0,0,0,.6)] ring-1 ring-white/20">
         <div className="flex items-center gap-3">
-          <Avatar name={name} size={48} />
+          <Avatar name={name} size={48} src={avatar} />
           <div className="min-w-0">
             <p className="text-xs text-muted">You’re invited by</p>
             <p className="truncate font-semibold text-ink">{name} {mainHandle && <span className="font-normal text-muted">@{mainHandle}</span>}</p>
@@ -369,170 +536,8 @@ function InvitePreview({ f }) {
   );
 }
 
+// Creator setup is the guided wizard. (Creators who are already set up edit their profile inside the
+// dashboard — see creator/ProfilePage.js — and AppRoot sends them there if they open /setup.)
 export function CreatorSetup() {
-  const { state, dispatch, auth } = useStore();
-  const c = state.creator?.claimed ? state.creator : null;
-  const saved = (label) => c?.platforms?.find((p) => p.name === label);
-  // Which platform the saved profile already had (so editing re-opens on it); default YouTube.
-  const savedPrimary = c?.platforms?.[0]?.name;
-  const [primary, setPrimary] = useState(({ Instagram: 'ig', YouTube: 'yt', X: 'x' })[savedPrimary] || 'yt');
-  const [f, setF] = useState({
-    name: c?.name || state.user?.name || '', handle: c?.handle || '', niche: c?.niche || '',
-    ig: saved('Instagram')?.followers || '', yt: saved('YouTube')?.followers || '', x: saved('X')?.followers || '',
-    // Per-platform handles. Empty string = "inherit from the main handle" (auto-picked).
-    igh: saved('Instagram')?.handle || '', yth: saved('YouTube')?.handle || '', xh: saved('X')?.handle || '',
-  });
-  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
-
-  // Normalize a handle to a bare username (strip leading @, spaces and any URL parts).
-  const bareHandle = (h) => String(h || '').trim().replace(/^@+/, '').replace(/\s+/g, '').replace(/.*\/(@?)/, '');
-  const mainHandle = bareHandle(f.handle);
-  // Each platform's effective handle: its own override, else auto-picked from the main handle.
-  const handleFor = (key) => bareHandle(f[`${key}h`]) || mainHandle;
-
-  const ok = f.name.trim().length >= 2;
-
-  // YouTube auto-fetch via the backend (official Data API). Only enabled when the server has a key.
-  const [ytEnabled, setYtEnabled] = useState(false);
-  const [ytState, setYtState] = useState({ busy: false, note: '' });
-  useEffect(() => {
-    let alive = true;
-    fetch('/api/integrations/youtube').then((r) => (r.ok ? r.json() : null)).then((d) => alive && setYtEnabled(!!d?.enabled)).catch(() => {});
-    return () => { alive = false; };
-  }, []);
-  const fetchYouTube = async () => {
-    const handle = handleFor('yt');
-    if (!handle) { setYtState({ busy: false, note: 'Enter your YouTube handle first.' }); return; }
-    setYtState({ busy: true, note: '' });
-    try {
-      const r = await fetch(`/api/integrations/youtube?handle=${encodeURIComponent(handle)}`);
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) { setYtState({ busy: false, note: d.error || 'Could not fetch — enter it manually.' }); return; }
-      const ch = d.channel || {};
-      setF((x) => ({
-        ...x,
-        yt: ch.subscribers != null ? String(ch.subscribers) : x.yt,
-        yth: ch.handle ? ch.handle.replace(/^@+/, '') : x.yth,
-      }));
-      setYtState({ busy: false, note: ch.subscribers == null ? `${ch.title || 'Channel'} found — subscribers are hidden on this channel.` : `✓ ${ch.title || 'Channel'} · ${ch.subscribers.toLocaleString('en-US')} subscribers` });
-    } catch {
-      setYtState({ busy: false, note: 'Could not reach the server — enter it manually.' });
-    }
-  };
-
-  const save = (e) => {
-    e.preventDefault();
-    if (!ok) return;
-    // Save every platform that has a handle or a follower count — not just the primary — so
-    // nothing the creator typed is lost, while the UI stays focused on one primary platform.
-    const rows = [['Instagram', 'ig'], ['YouTube', 'yt'], ['X', 'x']];
-    const primaryKey = primary;
-    const platforms = rows
-      .map(([name, key]) => ({ name, key, handle: handleFor(key), followers: Number(f[key]) || 0 }))
-      .filter((p) => p.handle || p.followers > 0)
-      // Keep the chosen primary platform first.
-      .sort((a, b) => (a.key === primaryKey ? -1 : b.key === primaryKey ? 1 : 0))
-      .map(({ name, handle, followers }) => ({ name, handle, followers }));
-    dispatch({ type: 'SET_CREATOR', creator: { name: f.name.trim(), handle: mainHandle ? `@${mainHandle}` : '', niche: f.niche.trim(), platforms: platforms.length ? platforms : state.creator.platforms } });
-    dispatch({ type: 'NAV', patch: { view: 'creator', creatorPage: 'dashboard' } });
-  };
-
-  // The one platform shown on this screen (others can be added later from the dashboard).
-  const [pKey, pLabel, PIcon, pGrad] = PLATFORM_META.find(([k]) => k === primary) || PLATFORM_META[1];
-  const pHandle = handleFor(pKey);
-  const pAuto = !bareHandle(f[`${pKey}h`]);
-  const isYt = pKey === 'yt';
-
-  return (
-    <SplitShell
-      eyebrow="What your followers see"
-      panelTitle={<>Your community, <span className="ai-gradient-animated">your brand.</span></>}
-      panel={<InvitePreview f={f} />}
-      topRight={(
-        <>
-          {c && <button onClick={() => dispatch({ type: 'NAV', patch: { view: 'creator', creatorPage: 'dashboard' } })} className="inline-flex items-center gap-1 transition hover:text-ink"><ArrowLeft className="h-4 w-4" aria-hidden="true" /> Dashboard</button>}
-          <button onClick={() => auth.logout()} className="transition hover:text-ink">Log out</button>
-        </>
-      )}
-    >
-      <form onSubmit={save} className="animate-fade-up">
-        <p className="inline-flex items-center gap-1.5 rounded-full border border-accent/15 bg-accent-soft/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.14em] text-accent"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Creator profile</p>
-        <h1 className="mt-3 font-display text-3xl font-semibold text-ink sm:text-4xl">Set up your <span className="ai-gradient-animated">community</span></h1>
-        <p className="mt-2 text-ink-2">Three quick details. Your community starts empty — real members and ideas appear as people join through your invite link.</p>
-
-        <div className="card mt-7 p-6">
-          <div className="space-y-4">
-            <Field id="c-name" label="Name" icon={User} value={f.name} onChange={set('name')} maxLength={60} required placeholder="e.g. Gautam Kumar" />
-            <Field id="c-handle" label="Username" icon={AtSign} value={f.handle} onChange={set('handle')} maxLength={40} placeholder="yourhandle" />
-            <Field id="c-niche" label="Niche" icon={Sparkles} value={f.niche} onChange={set('niche')} maxLength={80} placeholder="AI, startups & building in public" />
-          </div>
-        </div>
-
-        <div className="card mt-4 p-6">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="text-sm font-semibold text-ink">Your main platform <span className="font-normal text-muted">(optional)</span></p>
-            <p className="text-[11px] text-muted">Add more later</p>
-          </div>
-
-          {/* Platform picker — pick one to feature now */}
-          <div role="radiogroup" aria-label="Main platform" className="mt-3 grid grid-cols-3 gap-2">
-            {PLATFORM_META.map(([k, label, Icon, grad]) => {
-              const on = primary === k;
-              return (
-                <button key={k} type="button" role="radio" aria-checked={on} onClick={() => setPrimary(k)}
-                  className={cx('flex h-11 items-center justify-center gap-2 rounded-xl border text-sm font-medium transition', on ? 'border-accent bg-accent-soft text-accent ring-2 ring-accent/15' : 'border-line bg-white text-ink-2 hover:border-ink/20 hover:text-ink')}>
-                  <span className={cx('flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br text-white', grad)}><Icon className="h-3.5 w-3.5" aria-hidden="true" /></span>
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Selected platform: auto-filled handle + followers (YouTube can auto-fetch) */}
-          <div className="mt-3 space-y-2">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
-              <label htmlFor={`c-${pKey}-handle`} className="relative min-w-0 flex-1">
-                <span className="mb-1.5 block text-xs font-medium text-ink">{pLabel} handle</span>
-                <span className="pointer-events-none absolute left-3 top-[2.1rem] text-sm text-muted">@</span>
-                <input id={`c-${pKey}-handle`} value={pHandle} onChange={set(`${pKey}h`)} maxLength={40} autoComplete="off" placeholder={mainHandle || 'handle'}
-                  className="h-11 w-full rounded-xl border border-line bg-paper/60 pl-7 pr-14 text-sm text-ink outline-none transition focus:border-accent focus:bg-white" />
-                {pAuto && pHandle && <span className="pointer-events-none absolute right-3 top-[2.3rem] rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent">auto</span>}
-              </label>
-              <label htmlFor={`c-${pKey}`} className="sm:w-40">
-                <span className="mb-1.5 block text-xs font-medium text-ink">{isYt ? 'Subscribers' : 'Followers'}</span>
-                <input id={`c-${pKey}`} type="number" min="0" inputMode="numeric" value={f[pKey]} onChange={set(pKey)} placeholder="0"
-                  className="h-11 w-full rounded-xl border border-line bg-paper/60 px-3 text-right text-sm font-semibold text-ink outline-none transition focus:border-accent focus:bg-white placeholder:font-normal placeholder:text-line" />
-              </label>
-              {isYt && ytEnabled && (
-                <button type="button" onClick={fetchYouTube} disabled={ytState.busy || !pHandle}
-                  className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-accent/30 bg-accent-soft px-4 text-sm font-semibold text-accent transition hover:bg-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-50">
-                  {ytState.busy ? <Sparkles className="h-4 w-4 animate-pulse" aria-hidden="true" /> : <Zap className="h-4 w-4" aria-hidden="true" />}
-                  {ytState.busy ? 'Fetching…' : 'Fetch'}
-                </button>
-              )}
-            </div>
-            {isYt && ytEnabled && !ytState.note && <p className="text-xs text-muted">Tip: enter your YouTube handle and tap Fetch to pull your real subscriber count.</p>}
-            {isYt && ytState.note && <p className={cx('text-xs', ytState.note.startsWith('✓') ? 'text-mint' : 'text-muted')}>{ytState.note}</p>}
-          </div>
-        </div>
-
-        <Button type="submit" variant="accent" size="lg" className="mt-6 w-full" icon={Check} disabled={!ok}>Save & open dashboard</Button>
-        <p className="mt-3 text-center text-xs text-muted">You can edit this anytime from your profile menu (top right).</p>
-      </form>
-
-      {c && (
-        <section aria-labelledby="danger-title" className="mt-8 rounded-2xl border border-coral/25 bg-coral-soft/40 p-5">
-          <h2 id="danger-title" className="text-sm font-semibold text-coral">Danger zone</h2>
-          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-ink-2">Clear all ideas, projects, communities and activity. Member accounts are kept. This cannot be undone.</p>
-            <button type="button"
-              onClick={() => { if (confirm('Clear all community content (ideas, projects, communities, activity)? Member accounts are kept. This cannot be undone.')) { dispatch({ type: 'RESET' }); dispatch({ type: 'NAV', patch: { view: 'creator', creatorPage: 'dashboard' } }); } }}
-              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-coral/40 bg-white px-4 py-2 text-sm font-semibold text-coral transition hover:bg-coral hover:text-white">
-              <Trash2 className="h-4 w-4" aria-hidden="true" /> Clear content
-            </button>
-          </div>
-        </section>
-      )}
-    </SplitShell>
-  );
+  return <CreatorOnboarding />;
 }

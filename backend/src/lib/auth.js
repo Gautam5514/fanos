@@ -1,6 +1,7 @@
 // Accounts & sessions via Supabase Auth (sessions live in Supabase-managed httpOnly cookies).
 // Roles and the member link are stored in public.profiles.
 import { adminDb, authClient, checkDbError } from './supabase.js';
+import { safeAvatar } from './avatar.js';
 
 export const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
 
@@ -25,7 +26,7 @@ export function passwordWeakness(pw) {
 }
 
 export function publicUser(u) {
-  return u ? { id: u.id, email: u.email, name: u.name, role: u.role, memberId: u.memberId || null, communityId: u.communityId || null, provider: u.provider } : null;
+  return u ? { id: u.id, email: u.email, name: u.name, role: u.role, memberId: u.memberId || null, communityId: u.communityId || null, provider: u.provider, avatar: u.avatar || '' } : null;
 }
 
 export async function getProfile(id) {
@@ -43,6 +44,13 @@ export async function createProfile({ id, email, name, role, provider, community
     .select('*').single();
   checkDbError(error);
   return data;
+}
+
+// A fan who has not joined any community and has not onboarded can switch to being a creator
+// (they picked the wrong role, e.g. at Google sign-up). A creator owns the community with their own id.
+export async function makeCreator(userId) {
+  const { error } = await adminDb().from('profiles').update({ role: 'creator', community_id: userId }).eq('id', userId);
+  checkDbError(error);
 }
 
 export async function setMemberId(userId, memberId) {
@@ -76,7 +84,7 @@ export async function getUser(req, res) {
   const { data, error } = await sb.auth.getUser();
   if (error || !data?.user) return null;
   const p = await getProfile(data.user.id);
-  return p ? fromProfile(p) : null;
+  return p ? { ...fromProfile(p), avatar: safeAvatar(data.user.user_metadata?.avatar_url) } : null;
 }
 
 export const clientIp = (req) => req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'local';

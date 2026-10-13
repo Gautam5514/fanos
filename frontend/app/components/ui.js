@@ -33,7 +33,8 @@ const GRADS = [
 ];
 function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
 
-export function Avatar({ name = '?', size = 36, ring, className }) {
+export function Avatar({ name = '?', size = 36, ring, className, src }) {
+  const [failed, setFailed] = useState('');
   const [a, b] = GRADS[hash(name) % GRADS.length];
   const initials = name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
   return (
@@ -42,7 +43,10 @@ export function Avatar({ name = '?', size = 36, ring, className }) {
       className={cx('inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white select-none', ring && 'ring-2 ring-white', className)}
       style={{ width: size, height: size, fontSize: Math.max(10, size * 0.38), background: `linear-gradient(135deg, ${a}, ${b})` }}
     >
-      {initials}
+      {src && failed !== src
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={src} alt="" width={size} height={size} referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(src)} className="h-full w-full rounded-full object-cover" />
+        : initials}
     </span>
   );
 }

@@ -39,7 +39,7 @@ function Eyebrow({ icon: Icon, children, tone = 'text-accent', center }) {
 
 export default function Landing() {
   const { state, dispatch, auth } = useStore();
-  const getStarted = (role = 'member') => dispatch({ type: 'NAV', patch: { view: 'auth', authTab: 'signup', authRole: role } });
+  const getStarted = (role = 'creator') => dispatch({ type: 'NAV', patch: { view: 'auth', authTab: 'signup', authRole: role } });
   const logIn = () => dispatch({ type: 'NAV', patch: { view: 'auth', authTab: 'login' } });
   const user = state.user;
   // The app routes unfinished accounts to /setup or /onboarding automatically.

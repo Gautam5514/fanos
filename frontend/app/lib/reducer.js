@@ -123,7 +123,7 @@ export function reducer(state, a) {
       const prev = state.members.find((m) => m.id === id);
       const members = [me, ...state.members.filter((m) => m.id !== id)];
       const communities = state.communities.map((c) => {
-        const was = prev?.communities.includes(c.id), now = me.communities.includes(c.id);
+        const was = !!prev?.communities.includes(c.id), now = me.communities.includes(c.id); // coerce: a first-time member was in none
         return was === now ? c : { ...c, members: c.members + (now ? 1 : -1) };
       });
       return { ...state, members, communities, meId: id, view: 'member', memberPage: 'home', newActivity: state.newActivity + 1, activity: [{ id: idOf(a, 'a'), text: `${name} joined as a ${role}`, at: Date.now(), memberId: id }, ...state.activity].slice(0, 100) };

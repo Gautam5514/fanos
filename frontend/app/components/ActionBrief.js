@@ -8,6 +8,7 @@ import { useStore } from '../lib/store';
 import { actionBrief, summarizeIdea } from '../lib/ai';
 import { Avatar, Button, cx } from './ui';
 import { StageTrack } from './shared';
+import { AiIcon } from './icons';
 
 const NEXT_LABEL = { select: 'Select for pilot', workspace: 'Create workspace', 'open-project': 'Open project', promote: 'Promote', invite: 'Invite', restore: 'Restore idea' };
 
@@ -29,7 +30,7 @@ export default function ActionBrief({ idea, isCreator, onAction }) {
     <section aria-labelledby={`brief-${idea.id}`} className="mt-5 overflow-hidden rounded-2xl border border-accent/20 bg-white shadow-card">
       <div className="ai-glow border-b border-line px-4 py-3.5 sm:px-5">
         <div className="flex items-center justify-between gap-3">
-          <h3 id={`brief-${idea.id}`} className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.14em] text-accent"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Action Brief</h3>
+          <h3 id={`brief-${idea.id}`} className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.14em] text-accent"><AiIcon className="h-3.5 w-3.5" /> Action Brief</h3>
           <span className="text-[11px] text-muted">Built from community activity</span>
         </div>
         <div className="mt-3"><StageTrack stage={brief.stage} /></div>

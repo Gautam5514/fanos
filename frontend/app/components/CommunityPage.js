@@ -1,12 +1,14 @@
 'use client';
 
 import { useMemo } from 'react';
-import { ArrowLeft, Plus, Check, Lightbulb, MessageCircle, Megaphone, Rocket, Handshake, Users, Rss, FolderKanban } from 'lucide-react';
+import { ArrowLeft, Plus, Check, Lightbulb, MessageCircle, Megaphone, Rocket, Handshake, Users, Rss, FolderKanban, Heart } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { contributionScore, ago, roleMatchesNeed } from '../lib/ai';
 import { CREATOR } from '../lib/seed';
 import { Avatar, Bar, Button, Chip, Empty, cx } from './ui';
-import { IdeaCard, PersonCard, memberName, useOpen } from './shared';
+import { IdeaCard, PersonCard, memberName, memberCount, useOpen } from './shared';
+import { SpaceIcon } from './icons';
+import { CopyInviteButton } from './creator/GettingStarted';
 
 const TABS = [['feed', 'Feed', Rss], ['ideas', 'Ideas', Lightbulb], ['members', 'Members', Users], ['projects', 'Projects', FolderKanban]];
 
@@ -50,14 +52,15 @@ export default function CommunityPage({ communityId, onBack, mode }) {
         <div className="h-20 bg-gradient-to-r from-accent/15 via-[#c06bff]/10 to-coral/15" />
         <div className="-mt-8 flex flex-col justify-between gap-4 px-6 pb-6 md:flex-row md:items-end">
           <div>
-            <span className="flex h-16 w-16 items-center justify-center rounded-2xl border border-line bg-white text-3xl shadow-sm" aria-hidden="true">{c.emoji}</span>
+            <span className="flex h-16 w-16 items-center justify-center rounded-2xl border border-line bg-white text-accent shadow-sm" aria-hidden="true"><SpaceIcon name={c.name} className="h-8 w-8" /></span>
             <h1 className="mt-3 font-display text-3xl font-semibold text-ink">{c.name}</h1>
             <p className="mt-1 text-ink-2">{c.description}</p>
-            <p className="mt-2 text-sm text-muted">{c.members.toLocaleString('en-US')} members • {ideas.length} ideas • {projects.length} projects{isMember && needsMe ? ` • ${needsMe} ideas need a ${me.role.toLowerCase()}` : ''}</p>
+            <p className="mt-2 text-sm text-muted">{memberCount(state.members, c).toLocaleString('en-US')} {memberCount(state.members, c) === 1 ? 'member' : 'members'} • {ideas.length} ideas • {projects.length} projects{isMember && needsMe ? ` • ${needsMe} ideas need a ${me.role.toLowerCase()}` : ''}</p>
           </div>
           <div className="flex gap-2">
             {isMember && <Button variant={joined ? 'secondary' : 'primary'} icon={joined ? Check : Plus} aria-pressed={!!joined} onClick={() => dispatch({ type: 'JOIN_COMMUNITY', communityId })}>{joined ? 'Joined' : 'Join community'}</Button>}
             {isMember && <Button variant="accent" icon={Plus} onClick={() => open.share({ communityId })}>Share an Idea</Button>}
+            {!isMember && <CopyInviteButton label="Invite people" variant="accent" />}
           </div>
         </div>
         <div role="tablist" aria-label="Community sections" className="flex gap-1 overflow-x-auto border-t border-line-2 px-4">
@@ -80,11 +83,11 @@ export default function CommunityPage({ communityId, onBack, mode }) {
                 <Plus className="h-5 w-5 text-accent" aria-hidden="true" />
               </button>
             )}
-            {feed.length ? feed.map((f) => <FeedItem key={f.key} item={f} />) : <Empty icon={Rss} title="No activity yet" text="Be the first to share an idea here." />}
+            {feed.length ? feed.map((f) => <FeedItem key={f.key} item={f} />) : <Empty icon={Rss} title="No activity yet" text={isMember ? 'Be the first to share an idea here.' : 'Invite your fans — their ideas and comments will appear here.'} action={!isMember && <CopyInviteButton label="Copy invite link" variant="accent" />} />}
           </div>
         )}
         {tab === 'ideas' && (ideas.length ? <div className="grid gap-3 lg:grid-cols-2">{ideas.map((i) => <IdeaCard key={i.id} idea={i} mode={mode} />)}</div> : <Empty icon={Lightbulb} title="No ideas yet" action={isMember && <Button variant="accent" icon={Plus} onClick={() => open.share({ communityId })}>Share the first idea</Button>} />)}
-        {tab === 'members' && (members.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{members.slice(0, 60).map((m) => <PersonCard key={m.id} member={m} />)}</div> : <Empty icon={Users} title="No members yet" />)}
+        {tab === 'members' && (members.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{members.slice(0, 60).map((m) => <PersonCard key={m.id} member={m} />)}</div> : <Empty icon={Users} title="No members yet" text={isMember ? undefined : 'Share your invite link so fans can join this space.'} action={!isMember && <CopyInviteButton label="Copy invite link" variant="accent" />} />)}
         {tab === 'projects' && (projects.length ? (
           <div className="grid gap-4 md:grid-cols-2">
             {projects.map((p) => {
@@ -118,7 +121,7 @@ function FeedItem({ item }) {
           <span className="block text-sm text-ink-2"><b className="font-semibold text-ink">{author}</b> shared an idea • {ago(item.days)}</span>
           <span className="mt-1 block font-display font-semibold text-ink">{item.idea.title}</span>
           <span className="mt-1 line-clamp-2 block text-sm text-ink-2">{item.idea.description}</span>
-          <span className="mt-2 flex gap-4 text-xs text-muted"><span>❤️ {item.idea.supports}</span><span>💬 {item.idea.commentsCount}</span><span>🤝 {item.idea.volunteers.length}</span></span>
+          <span className="mt-2 flex gap-4 text-xs text-muted"><span className="inline-flex items-center gap-1"><Heart className="h-3.5 w-3.5 text-coral" aria-hidden="true" />{item.idea.supports}</span><span className="inline-flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />{item.idea.commentsCount}</span><span className="inline-flex items-center gap-1"><Handshake className="h-3.5 w-3.5 text-mint" aria-hidden="true" />{item.idea.volunteers.length}</span></span>
         </span>
       </button>
     );

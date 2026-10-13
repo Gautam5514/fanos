@@ -90,7 +90,19 @@ function App() {
     if (want !== window.location.pathname) window.history[first ? 'replaceState' : 'pushState'](null, '', want);
   });
 
-  if (!state.ready || view === 'loading') return <><title>{title}</title><Loading /></>;
+  // A new screen (login → dashboard, wizard → app, …) always starts at the top, never at the
+  // scroll position the previous screen was left at.
+  useEffect(() => {
+    if (view === 'loading') return;
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [view]);
+
+  // A creator who already finished setup never sees the setup page (unless they are mid-wizard):
+  // they go to their profile inside the dashboard instead.
+  const leaveSetup = view === 'creator-setup' && role === 'creator' && !!state.creator?.claimed && !state.wizard;
+  useEffect(() => { if (leaveSetup) dispatch({ type: 'NAV', patch: { view: 'creator', creatorPage: 'profile' } }); }, [leaveSetup, dispatch]);
+
+  if (!state.ready || view === 'loading' || leaveSetup) return <><title>{title}</title><Loading /></>;
   return (
     <>
       <title>{title}</title>

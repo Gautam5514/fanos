@@ -45,8 +45,13 @@ function sanitize(a, user, st) {
       };
     }
     case 'SET_CREATOR': {
-      const platforms = Array.isArray(a.creator?.platforms) ? a.creator.platforms.slice(0, 6).map((p) => ({ name: str(p?.name, 20), handle: str(p?.handle, 40), followers: Math.max(0, Math.min(1e10, Math.round(Number(p?.followers) || 0))) })).filter((p) => p.name) : undefined;
-      return { type: 'SET_CREATOR', creator: { name: str(a.creator?.name, 60, 2), handle: str(a.creator?.handle, 40), niche: str(a.creator?.niche, 80), ...(platforms ? { platforms } : {}) } };
+      const platforms = Array.isArray(a.creator?.platforms) ? a.creator.platforms.slice(0, 10).map((p) => ({ name: str(p?.name, 20), handle: str(p?.handle, 60), followers: Math.max(0, Math.min(1e10, Math.round(Number(p?.followers) || 0))) })).filter((p) => p.name) : undefined;
+      // bio and website are only written when the client sends them (the setup wizard doesn't).
+      const has = (k) => a.creator && Object.prototype.hasOwnProperty.call(a.creator, k);
+      const site = String(a.creator?.website ?? '').trim().slice(0, 200);
+      return { type: 'SET_CREATOR', creator: { name: str(a.creator?.name, 60, 2), handle: str(a.creator?.handle, 40), niche: str(a.creator?.niche, 80),
+        ...(has('bio') ? { bio: str(a.creator.bio, 200) } : {}), ...(has('website') ? { website: /^https?:\/\/[^\s]+$/i.test(site) ? site : '' } : {}),
+        ...(platforms ? { platforms } : {}) } };
     }
     case 'JOIN_COMMUNITY':
       if (!st.communities.some((c) => c.id === a.communityId)) throw new ActionError(404, 'Community not found');

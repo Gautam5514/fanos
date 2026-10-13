@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { ActionError, applyAction, applyInternal, snapshotFor } from '../lib/actions.js';
 import { getUser, rateLimited } from '../lib/auth.js';
 import { loadState, loadVersion } from '../lib/db.js';
+import { avatarFor } from '../lib/avatar.js';
 import { readJson } from '../lib/http.js';
 import { llmEnabled, summarizeIdea } from '../lib/llm.js';
 import { searchState } from '../lib/search.js';
@@ -33,7 +34,9 @@ router.get('/state', async (req, res) => {
     const current = await loadVersion(user.communityId);
     if (current === v) return res.json({ unchanged: true, version: v });
   }
-  res.json(snapshotFor(user, await loadState(user.communityId)));
+  const snap = snapshotFor(user, await loadState(user.communityId));
+  if (snap.shared) snap.shared.creator = { ...snap.shared.creator, avatar: await avatarFor(user.communityId) }; // creator's photo, for everyone in the community
+  res.json(snap);
 });
 
 router.post('/actions', async (req, res) => {
@@ -48,6 +51,7 @@ router.post('/actions', async (req, res) => {
       const idea = snapshot.shared.ideas[0];
       summarizeIdea(idea).then((summary) => summary && applyInternal(user.communityId, { type: 'SET_SUMMARY', ideaId: idea.id, summary: summary.slice(0, 300) })).catch(() => {});
     }
+    if (snapshot.shared) snapshot.shared.creator = { ...snapshot.shared.creator, avatar: await avatarFor(user.communityId) };
     res.json({ ok: true, ...snapshot, memberId: user.memberId || null });
   } catch (e) {
     if (e instanceof ActionError) return res.status(e.status).json({ error: e.message });

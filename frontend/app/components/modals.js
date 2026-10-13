@@ -4,13 +4,16 @@ import { useMemo, useState } from 'react';
 import {
   Heart, Handshake, Bookmark, Star, Megaphone, Rocket, Sparkles, Layers, Send, Check, Copy, RefreshCw,
   ShieldCheck, Brain, Tags, Fingerprint, GitMerge, Gauge, UserCheck, Loader2, AlertTriangle, MapPin, Trophy, Lightbulb, MessagesSquare, FolderKanban, Award,
-  CheckCircle2, Link2, Archive, ArchiveRestore,
+  CheckCircle2, Link2, Archive, ArchiveRestore, PartyPopper,
 } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { contributionScore, findSimilar, generatePromo, moderate, recommendTeam, summarizeIdea, fmt, ago, roleMatchesNeed } from '../lib/ai';
 import { CATEGORIES, CREATOR, NEEDS, categoryForCommunity } from '../lib/seed';
 import { Avatar, Bar, Button, Chip, Modal, ScoreRing, cx } from './ui';
 import { IdeaStatus, memberName, useOpen } from './shared';
+import { Aurora } from './chrome';
+import { AiIcon, NEED_ICON, SpaceIcon } from './icons';
+import { aiTask } from '../lib/aiClient';
 import ActionBrief from './ActionBrief';
 import { ideaStage } from '../lib/reducer';
 
@@ -172,7 +175,7 @@ function IdeaModal({ id, onClose }) {
         {/* Right: AI intelligence */}
         <aside className="border-t border-line bg-paper/60 p-6 lg:rounded-r-3xl lg:border-l lg:border-t-0 lg:pt-14">
           <div className="ai-border ai-glow rounded-2xl p-5">
-            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.12em] text-accent"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> AI Signal Score</p>
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.12em] text-accent"><AiIcon className="h-3.5 w-3.5" /> AI Signal Score</p>
             <div className="mt-3 flex items-center gap-4">
               <ScoreRing score={sig.score} size={72} stroke={6} />
               <div>
@@ -266,6 +269,21 @@ function ShareIdeaModal({ prefill, onClose }) {
   const [communityId, setCommunityId] = useState(prefill?.communityId || me?.communities?.[0] || state.communities[0]?.id || '');
   const [category, setCategory] = useState(() => categoryForCommunity(findCommunity(prefill?.communityId || me?.communities?.[0] || state.communities[0]?.id)));
   const [needs, setNeeds] = useState(['Developer']);
+  // AI Idea Coach (Groq): suggests a clearer title/description/skills; the member picks what to keep.
+  const [coach, setCoach] = useState({ status: 'idle' });
+  const [used, setUsed] = useState({});
+  const runCoach = async () => {
+    setCoach({ status: 'loading' }); setUsed({});
+    const r = await aiTask('idea_coach', { title, description: desc, community: findCommunity(communityId)?.name });
+    setCoach(r.ok ? { status: 'done', data: r.data, meta: r.meta } : { status: 'error', error: r.error });
+  };
+  const applySuggestion = (what) => {
+    const d = coach.data; if (!d) return;
+    if (what === 'title' || what === 'all') setTitle(d.title);
+    if (what === 'description' || what === 'all') setDesc(d.description);
+    if (what === 'skills' || what === 'all') { if (d.needs.length) setNeeds(d.needs); if (d.category) setCategory(d.category); }
+    setUsed((u) => (what === 'all' ? { title: true, description: true, skills: true } : { ...u, [what]: true }));
+  };
   const [phase, setPhase] = useState('form'); // form | pipeline | done
   const [step, setStep] = useState(0);
   const [submittedTitle, setSubmittedTitle] = useState(null);
@@ -305,94 +323,192 @@ function ShareIdeaModal({ prefill, onClose }) {
   return (
     <Modal open={open} onClose={onClose} width="max-w-4xl" labelledBy="share-title">
       {phase === 'form' && (
-        <div className="grid md:grid-cols-[1fr_300px]">
-          <form className="p-6 sm:p-8" onSubmit={(e) => { e.preventDefault(); if (canSubmit) submit(); }}>
-            <p className="text-[11px] font-semibold uppercase tracking-[.12em] text-accent">Share an idea</p>
-            <h2 id="share-title" className="mt-1 font-display text-2xl font-semibold text-ink">What should we build together?</h2>
+        <div className="grid md:grid-cols-[1fr_320px]">
+          <form className="p-6 sm:p-8" onSubmit={(e) => { e.preventDefault(); if (canSubmit) submit(); }} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && canSubmit) { e.preventDefault(); submit(); } }}>
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-coral text-white shadow-[0_12px_28px_-10px_rgba(91,61,245,.6)]"><Lightbulb className="h-5 w-5" aria-hidden="true" /></span>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[.14em] text-accent">New idea</p>
+                <h2 id="share-title" className="font-display text-2xl font-semibold leading-tight text-ink">What should we build <span className="ai-gradient-animated">together?</span></h2>
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-ink-2">Members vote on ideas, and the best ones become real projects with {CREATOR.firstName === 'your creator' ? 'the creator' : CREATOR.firstName}.</p>
 
-            <label htmlFor="idea-t" className="mt-6 block text-sm font-medium text-ink">Title</label>
-            <input id="idea-t" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={140} placeholder="Build an AI tool that converts YouTube videos into visual notes" className="mt-1.5 h-11 w-full rounded-xl border border-line px-3.5 text-[15px] outline-none focus:border-accent" />
+            <div className="mt-6">
+              <div className="flex items-baseline justify-between"><label htmlFor="idea-t" className="text-sm font-medium text-ink">Title</label><span className={cx('text-[11px] tabular-nums', title.length > 125 ? 'text-amber' : 'text-muted')}>{title.length}/140</span></div>
+              <input id="idea-t" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={140} autoComplete="off" placeholder="An AI tool that turns YouTube videos into visual notes"
+                className="mt-1.5 h-12 w-full rounded-2xl border border-line bg-white px-4 font-display text-[17px] font-medium text-ink outline-none transition placeholder:font-sans placeholder:text-[15px] placeholder:font-normal placeholder:text-muted/70 focus:border-accent focus:ring-4 focus:ring-accent/10" />
+              {title.length === 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs text-muted">Start from:</span>
+                  {['A free beginner course on ', 'A live build session about ', 'A tool that automates ', 'A community challenge to '].map((t) => (
+                    <button key={t} type="button" onClick={() => setTitle(t)} className="rounded-full border border-line bg-white px-2.5 py-1 text-xs text-ink-2 transition hover:border-accent/40 hover:text-accent">{t.trim()}…</button>
+                  ))}
+                </div>
+              )}
+            </div>
 
-            <label htmlFor="idea-d" className="mt-4 block text-sm font-medium text-ink">Description <span className="font-normal text-muted">— why is it useful?</span></label>
-            <textarea id="idea-d" value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={2000} rows={4} placeholder="Who does it help, what problem does it solve, what would a first version look like?" className="mt-1.5 w-full resize-none rounded-xl border border-line px-3.5 py-2.5 text-[15px] outline-none focus:border-accent" />
-
-            <label htmlFor="idea-c" className="mt-4 block text-sm font-medium text-ink">Community</label>
-            <select id="idea-c" value={communityId} onChange={(e) => { setCommunityId(e.target.value); setCategory(categoryForCommunity(findCommunity(e.target.value))); }} className="mt-1.5 h-11 w-full rounded-xl border border-line bg-white px-3 text-sm outline-none focus:border-accent">
-              {state.communities.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}
-            </select>
-
-            <label htmlFor="idea-cat" className="mt-4 block text-sm font-medium text-ink">Category</label>
-            <select id="idea-cat" value={category} onChange={(e) => setCategory(e.target.value)} className="mt-1.5 h-11 w-full rounded-xl border border-line bg-white px-3 text-sm outline-none focus:border-accent">
-              {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
-            </select>
+            <div className="mt-4">
+              <div className="flex items-baseline justify-between"><label htmlFor="idea-d" className="text-sm font-medium text-ink">Description <span className="font-normal text-muted">— why is it useful?</span></label><span className="text-[11px] tabular-nums text-muted">{desc.length}/2000</span></div>
+              <textarea id="idea-d" value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={2000} rows={5} placeholder="Who does it help, what problem does it solve, and what would a first version look like?"
+                className="mt-1.5 w-full resize-none rounded-2xl border border-line bg-white px-4 py-3 text-[15px] leading-relaxed text-ink outline-none transition placeholder:text-muted/70 focus:border-accent focus:ring-4 focus:ring-accent/10" />
+              {state.aiEnabled && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={runCoach} disabled={title.trim().length < 4 || coach.status === 'loading'}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-full border border-accent/30 bg-accent-soft px-3 text-xs font-semibold text-accent transition hover:bg-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-50">
+                    {coach.status === 'loading' ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <AiIcon className="h-3.5 w-3.5" />}
+                    {coach.status === 'loading' ? 'Improving…' : coach.status === 'done' ? 'Improve again' : 'Improve with AI'}
+                  </button>
+                  <span className="text-xs text-muted">{title.trim().length < 4 ? 'Add a short title first.' : 'You choose what to keep.'}</span>
+                </div>
+              )}
+            </div>
 
             <fieldset className="mt-4">
-              <legend className="text-sm font-medium text-ink">What do you need?</legend>
+              <legend className="text-sm font-medium text-ink">Which space?</legend>
               <div className="mt-2 flex flex-wrap gap-2">
-                {NEEDS.map((n) => {
-                  const on = needs.includes(n);
+                {state.communities.map((c) => {
+                  const on = communityId === c.id;
                   return (
-                    <button type="button" key={n} aria-pressed={on} onClick={() => setNeeds((v) => (on ? v.filter((x) => x !== n) : [...v, n]))}
-                      className={cx('inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-sm transition', on ? 'border-accent bg-accent-soft font-medium text-accent' : 'border-line text-ink-2 hover:border-ink/25')}>
-                      {on && <Check className="h-3.5 w-3.5" aria-hidden="true" />}{n}
+                    <button key={c.id} type="button" aria-pressed={on} onClick={() => { setCommunityId(c.id); setCategory(categoryForCommunity(c)); }}
+                      className={cx('inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm transition', on ? 'border-accent bg-accent text-white shadow-sm' : 'border-line bg-white text-ink-2 hover:border-ink/25')}>
+                      <SpaceIcon name={c.name} className="h-3.5 w-3.5" />{c.name}
                     </button>
                   );
                 })}
               </div>
             </fieldset>
 
-            <div className="mt-6 flex items-center justify-end gap-2">
-              <Button variant="ghost" onClick={onClose}>Cancel</Button>
-              <Button type="submit" variant="accent" icon={Sparkles} disabled={!canSubmit}>Submit idea</Button>
+            <fieldset className="mt-4">
+              <legend className="text-sm font-medium text-ink">What do you need?</legend>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {NEEDS.map((n) => {
+                  const on = needs.includes(n);
+                  const Icon = NEED_ICON[n] || Sparkles;
+                  return (
+                    <button type="button" key={n} aria-pressed={on} onClick={() => setNeeds((v) => (on ? v.filter((x) => x !== n) : [...v, n]))}
+                      className={cx('inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm transition', on ? 'border-accent bg-accent-soft font-medium text-accent' : 'border-line bg-white text-ink-2 hover:border-ink/25')}>
+                      <Icon className="h-3.5 w-3.5" aria-hidden="true" />{n}{on && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+
+            <div className="mt-4 flex items-center gap-2 text-sm">
+              <label htmlFor="idea-cat" className="font-medium text-ink">Category</label>
+              <select id="idea-cat" value={category} onChange={(e) => setCategory(e.target.value)} className="h-9 rounded-full border border-line bg-white px-3 text-sm text-ink-2 outline-none focus:border-accent">
+                {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+              </select>
+              <span className="text-xs text-muted">auto-picked from the space</span>
+            </div>
+
+            <div className="mt-7 flex items-center justify-between gap-3">
+              <span className="hidden text-xs text-muted sm:block"><kbd className="rounded border border-line bg-paper px-1.5 py-0.5 font-sans text-[10px]">⌘</kbd> <kbd className="rounded border border-line bg-paper px-1.5 py-0.5 font-sans text-[10px]">↵</kbd> to submit</span>
+              <div className="ml-auto flex items-center gap-2">
+                <Button variant="ghost" onClick={onClose}>Cancel</Button>
+                <Button type="submit" variant="accent" size="lg" icon={Sparkles} disabled={!canSubmit}>Submit idea</Button>
+              </div>
             </div>
           </form>
 
-          {/* Live AI copilot */}
-          <aside className="border-t border-line bg-paper/60 p-6 md:rounded-r-3xl md:border-l md:border-t-0">
-            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.12em] text-accent"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Live AI check</p>
-            <div className="mt-4" aria-live="polite">
-              <div className="mb-1 flex justify-between text-xs"><span className="text-ink-2">Idea quality</span><span className="font-mono text-muted">{Math.round(quality)}</span></div>
-              <Bar value={quality} color={quality >= 75 ? 'bg-mint' : quality >= 50 ? 'bg-amber' : 'bg-coral'} />
-            </div>
-            {tags.length > 0 && (
-              <div className="mt-4">
-                <p className="mb-1.5 text-xs text-muted">Detected topics</p>
-                <div className="flex flex-wrap gap-1">{tags.map((t) => <Chip key={t} tone="accent">{t}</Chip>)}</div>
-              </div>
-            )}
-            {mod.isSpam && (
-              <div className="mt-4 rounded-xl bg-coral-soft p-3 text-xs text-coral"><AlertTriangle className="mb-1 h-4 w-4" aria-hidden="true" />Looks like spam: {mod.reasons.join(', ')}</div>
-            )}
-            {topDup ? (
-              <div className="mt-4 animate-fade-up rounded-2xl border border-accent/30 bg-white p-4">
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-accent"><GitMerge className="h-3.5 w-3.5" aria-hidden="true" /> A very similar idea already exists</p>
-                <p className="mt-1.5 text-sm font-medium text-ink">{topDup.idea.title}</p>
-                <p className="mt-1 text-xs text-muted">❤️ {topDup.idea.supports} supporters{intel.clusterOf.get(topDup.idea.id) ? ` • ${intel.clusterOf.get(topDup.idea.id).requests} similar requests` : ''}</p>
-                <p className="mt-2 text-xs text-ink-2">Add your voice to it instead? Merged ideas get the creator’s attention faster.</p>
-                <div className="mt-3 flex gap-2">
-                  <Button size="sm" variant="primary" icon={Heart} onClick={() => { dispatch({ type: 'MERGE_INTO', ideaId: topDup.idea.id }); openM.idea(topDup.idea.id); }}>Support it</Button>
-                  <Button size="sm" variant="ghost" onClick={() => openM.idea(topDup.idea.id)}>View</Button>
+          {/* Live AI check */}
+          <aside className="relative overflow-hidden bg-night p-6 text-white md:rounded-r-3xl">
+            <Aurora tone="dark" className="opacity-80" />
+            <div className="relative">
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[.14em] text-white/60"><AiIcon className="h-3.5 w-3.5 text-[#b9a8ff]" /> Live AI check</p>
+              {coach.status !== 'idle' && (
+                <div className="mt-4 animate-fade-up rounded-2xl bg-white p-4 text-ink" aria-live="polite">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-accent"><AiIcon className="h-3.5 w-3.5" /> AI coach</p>
+                  {coach.status === 'loading' && <div className="mt-3 space-y-2" aria-label="Improving your idea"><div className="h-3 w-4/5 animate-pulse rounded bg-line-2" /><div className="h-3 w-full animate-pulse rounded bg-line-2" /><div className="h-3 w-3/5 animate-pulse rounded bg-line-2" /></div>}
+                  {coach.status === 'error' && (
+                    <div className="mt-2"><p className="text-sm text-ink-2">{coach.error}</p><button type="button" onClick={runCoach} className="mt-2 text-xs font-semibold text-accent hover:underline">Try again</button></div>
+                  )}
+                  {coach.status === 'done' && (
+                    <div className="mt-2 space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between gap-2"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Title</p><button type="button" onClick={() => applySuggestion('title')} disabled={used.title} className="text-xs font-semibold text-accent hover:underline disabled:text-mint disabled:no-underline">{used.title ? 'Used' : 'Use'}</button></div>
+                        <p className="mt-0.5 text-sm font-medium leading-snug">{coach.data.title}</p>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between gap-2"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Description</p><button type="button" onClick={() => applySuggestion('description')} disabled={used.description} className="text-xs font-semibold text-accent hover:underline disabled:text-mint disabled:no-underline">{used.description ? 'Used' : 'Use'}</button></div>
+                        <p className="mt-0.5 text-[13px] leading-relaxed text-ink-2">{coach.data.description}</p>
+                      </div>
+                      {(coach.data.needs.length > 0 || coach.data.category) && (
+                        <div>
+                          <div className="flex items-center justify-between gap-2"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Skills &amp; category</p><button type="button" onClick={() => applySuggestion('skills')} disabled={used.skills} className="text-xs font-semibold text-accent hover:underline disabled:text-mint disabled:no-underline">{used.skills ? 'Used' : 'Use'}</button></div>
+                          <div className="mt-1 flex flex-wrap gap-1">{coach.data.needs.map((n) => <Chip key={n} tone="accent">{n}</Chip>)}{coach.data.category && <Chip tone="sky">{coach.data.category}</Chip>}</div>
+                        </div>
+                      )}
+                      {coach.data.tips.length > 0 && (
+                        <ul className="space-y-1 border-t border-line-2 pt-2.5">{coach.data.tips.map((t) => <li key={t} className="flex gap-1.5 text-xs text-ink-2"><Lightbulb className="mt-0.5 h-3 w-3 shrink-0 text-amber" aria-hidden="true" />{t}</li>)}</ul>
+                      )}
+                      <div className="flex items-center justify-between gap-2 border-t border-line-2 pt-2.5">
+                        <span className="text-[11px] text-muted">You choose what to keep.</span>
+                        <Button size="sm" variant="accent" icon={Check} onClick={() => applySuggestion('all')} disabled={used.title && used.description && used.skills}>Use all</Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
+              <div className="mt-4 rounded-2xl bg-white/[.07] p-4 ring-1 ring-white/10" aria-live="polite">
+                <div className="flex items-end justify-between">
+                  <p className="font-display text-4xl font-semibold leading-none">{Math.round(quality)}<span className="text-base font-medium text-white/50">/100</span></p>
+                  <span className={cx('rounded-full px-2.5 py-1 text-[11px] font-semibold', quality >= 75 ? 'bg-mint/20 text-[#7ee7b5]' : quality >= 50 ? 'bg-amber/20 text-[#ffd479]' : 'bg-coral/20 text-[#ff9b84]')}>{quality >= 75 ? 'Great idea' : quality >= 50 ? 'Good start' : 'Needs detail'}</span>
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10"><div className={cx('h-full rounded-full transition-all duration-500', quality >= 75 ? 'bg-mint' : quality >= 50 ? 'bg-amber' : 'bg-coral')} style={{ width: `${Math.max(4, quality)}%` }} /></div>
+                <p className="mt-2 text-xs text-white/55">Quality improves as you add detail.</p>
               </div>
-            ) : similar.length > 0 ? (
-              <div className="mt-4">
-                <p className="mb-1.5 text-xs text-muted">Related ideas</p>
-                {similar.map((s) => <p key={s.idea.id} className="truncate text-xs text-ink-2">↳ {s.idea.title}</p>)}
-              </div>
-            ) : null}
-            {tips.length > 0 && (
-              <ul className="mt-4 space-y-1.5">
-                {tips.map((t) => <li key={t} className="flex gap-1.5 text-xs text-ink-2"><Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber" aria-hidden="true" />{t}</li>)}
-              </ul>
-            )}
+              {tags.length > 0 && (
+                <div className="mt-5">
+                  <p className="mb-2 text-xs text-white/55">Detected topics</p>
+                  <div className="flex flex-wrap gap-1.5">{tags.map((t) => <span key={t} className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/90 ring-1 ring-white/10">{t}</span>)}</div>
+                </div>
+              )}
+              {mod.isSpam && (
+                <div className="mt-5 rounded-2xl bg-coral/15 p-3 text-xs text-[#ff9b84] ring-1 ring-coral/30"><AlertTriangle className="mb-1 h-4 w-4" aria-hidden="true" />Looks like spam: {mod.reasons.join(', ')}</div>
+              )}
+              {topDup ? (
+                <div className="mt-5 animate-fade-up rounded-2xl bg-white p-4 text-ink">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-accent"><GitMerge className="h-3.5 w-3.5" aria-hidden="true" /> A very similar idea already exists</p>
+                  <p className="mt-1.5 text-sm font-medium">{topDup.idea.title}</p>
+                  <p className="mt-1 flex items-center gap-1 text-xs text-muted"><Heart className="h-3 w-3 text-coral" aria-hidden="true" /> {topDup.idea.supports} supporters{intel.clusterOf.get(topDup.idea.id) ? ` · ${intel.clusterOf.get(topDup.idea.id).requests} similar requests` : ''}</p>
+                  <p className="mt-2 text-xs text-ink-2">Add your voice to it instead? Merged ideas get the creator’s attention faster.</p>
+                  <div className="mt-3 flex gap-2">
+                    <Button size="sm" variant="primary" icon={Heart} onClick={() => { dispatch({ type: 'MERGE_INTO', ideaId: topDup.idea.id }); openM.idea(topDup.idea.id); }}>Support it</Button>
+                    <Button size="sm" variant="ghost" onClick={() => openM.idea(topDup.idea.id)}>View</Button>
+                  </div>
+                </div>
+              ) : similar.length > 0 ? (
+                <div className="mt-5">
+                  <p className="mb-1.5 text-xs text-white/55">Related ideas</p>
+                  {similar.map((s) => <p key={s.idea.id} className="truncate text-xs text-white/80">↳ {s.idea.title}</p>)}
+                </div>
+              ) : null}
+              {tips.length > 0 && (
+                <ul className="mt-5 space-y-2">
+                  {tips.map((t) => <li key={t} className="flex gap-2 text-xs text-white/75"><Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#ffd479]" aria-hidden="true" />{t}</li>)}
+                </ul>
+              )}
+              {tips.length === 0 && !topDup && !mod.isSpam && (
+                <p className="mt-5 flex items-center gap-2 text-xs text-[#7ee7b5]"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Looks ready to share.</p>
+              )}
+            </div>
           </aside>
         </div>
       )}
 
       {phase !== 'form' && (
         <div className="p-8 sm:p-10">
-          <p className="text-[11px] font-semibold uppercase tracking-[.12em] text-accent">FanOS Intelligence Pipeline</p>
-          <h2 id="share-title" className="mt-1 font-display text-2xl font-semibold text-ink">{phase === 'done' ? 'Your idea is live 🎉' : 'Analyzing your idea…'}</h2>
+          <div className="flex items-center gap-3.5">
+            <span className={cx('flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-[0_12px_28px_-10px_rgba(91,61,245,.6)] transition-all duration-500', phase === 'done' ? 'bg-gradient-to-br from-mint to-[#38c98a]' : 'bg-gradient-to-br from-accent to-coral')}>
+              {phase === 'done' ? <PartyPopper className="h-6 w-6" aria-hidden="true" /> : <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />}
+            </span>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[.14em] text-accent">FanOS Intelligence</p>
+              <h2 id="share-title" className="font-display text-2xl font-semibold leading-tight text-ink">{phase === 'done' ? <>Your idea is <span className="ai-gradient-animated">live</span></> : 'Analyzing your idea…'}</h2>
+            </div>
+          </div>
           <ol className="mt-6 grid gap-2 sm:grid-cols-2">
             {PIPELINE.map(([Icon, label], i) => {
               const done = step > i, active = step === i;
@@ -488,7 +604,7 @@ function PromoteModal({ id, onClose }) {
               {['Excited', 'Professional', 'Casual'].map((t) => <option key={t}>{t}</option>)}
             </select>
             <Button size="sm" variant="ghost" icon={RefreshCw} onClick={() => regenerate({ variant: variant + 1 })}>Regenerate</Button>
-            {state.aiEnabled && <Button size="sm" variant="soft" icon={Sparkles} disabled={generating} onClick={rewriteWithAI}>Rewrite with AI</Button>}
+            {state.aiEnabled && <Button size="sm" variant="soft" icon={AiIcon} disabled={generating} onClick={rewriteWithAI}>Rewrite with AI</Button>}
           </div>
         </div>
 

@@ -80,7 +80,7 @@ export function searchState(user, st, rawQuery) {
     .map((c) => ({ c, s: best([[c.name, 1], [c.description, 0.5], [c.interest, 0.6]], q) }))
     .filter((x) => x.s > 0)
     .sort((a, b) => b.s - a.s)
-    .map(({ c }) => ({ id: c.id, label: `${c.emoji || '✨'} ${clip(c.name, 40)}`, meta: `${(c.members || 0)} members`, type: 'community' }));
+    .map(({ c }) => ({ id: c.id, label: clip(c.name, 40), meta: `${(c.members || 0)} members`, type: 'community' }));
   push('communities', communities);
 
   // ── Projects ──

@@ -14,7 +14,7 @@
 // parsePath() turns a URL into a NAV patch; pathFor() turns state back into a URL.
 
 const CREATOR_ONLY = ['dashboard', 'brief', 'opportunities'];
-const MEMBER_ONLY = ['home', 'profile'];
+const MEMBER_ONLY = ['home'];
 const SHARED = ['ideas', 'people', 'communities', 'projects'];
 
 export const APP_VIEWS = ['creator', 'member', 'onboarding', 'creator-setup'];
@@ -28,6 +28,7 @@ export function parsePath(pathname, role) {
   // Invite link carries the creator (community) id: /join/:creatorId.
   if (first === 'join') return { view: 'auth', authTab: 'signup', authRole: 'member', viaInvite: true, inviteCommunity: second || null };
   if (first === 'setup') return { view: 'creator-setup' };
+  if (first === 'profile') return role === 'creator' ? { view: 'creator', creatorPage: 'profile' } : { view: 'member', memberPage: 'profile' };
   if (first === 'onboarding') return { view: 'onboarding' };
   // Public idea: /i/:creatorId/:id (creatorId scopes the community).
   if (first === 'i' && second && third) return { view: 'public-idea', publicIdeaCommunity: second, publicIdeaId: third };

@@ -2,16 +2,22 @@
 
 import { Fragment, useEffect, useRef, useState } from 'react';
 import {
-  LayoutDashboard, Newspaper, Lightbulb, Inbox, Users, Boxes, FolderKanban, Sparkles, LogOut, UserCog, Send, Link2, Check, Menu, X, Loader2, ArrowUpRight, TrendingUp, TrendingDown, PanelLeftClose, PanelLeftOpen,
+  LayoutDashboard, Newspaper, Lightbulb, Inbox, Users, Boxes, FolderKanban, Sparkles, LogOut, UserCog, Send, Link2, Check, Menu, X, Loader2, ArrowUpRight, TrendingUp, TrendingDown, PanelLeftClose, Plus, Zap, Heart, Handshake,
 } from 'lucide-react';
 import { useStore } from '../../lib/store';
 import { askCopilot, COPILOT_SUGGESTIONS, hoursAgo } from '../../lib/ai';
 import { CREATOR } from '../../lib/seed';
 import { Avatar, Button, Chip, Logo, ScoreRing, Sparkline, cx } from '../ui';
-import { Aurora } from '../chrome';
+import { Aurora, CollapsedLogoToggle, RailTip } from '../chrome';
+import SearchPalette, { SearchTrigger } from '../SearchPalette';
+import { aiContext, aiStream, AI_SUGGESTIONS } from '../../lib/aiClient';
+import { AskAiButton, RichText, SourceChips } from '../AiParts';
+import { AiIcon } from '../icons';
 import ProfileMenu from '../ProfileMenu';
 import { PersonRow, useOpen } from '../shared';
 import Dashboard from './Dashboard';
+import ProfilePage from './ProfilePage';
+import { ICON as BRIEF_ICON } from './Priority';
 import { BriefPage, IdeasPage, OpportunitiesPage, PeoplePage, CommunitiesPage, ProjectsPage } from './Pages';
 
 const NAV = [
@@ -22,35 +28,44 @@ const NAV = [
   ['people', 'People', Users],
   ['communities', 'Communities', Boxes],
   ['projects', 'Projects', FolderKanban],
+  ['profile', 'Profile', UserCog],
 ];
 // Group headers shown above these items in the sidebar.
-const NAV_SECTION = { dashboard: 'Workspace', ideas: 'Community' };
+const NAV_SECTION = { dashboard: 'Workspace', ideas: 'Community', profile: 'Account' };
 
 export default function CreatorApp() {
   const { state, dispatch, intel, auth } = useStore();
   const [copilotOpen, setCopilotOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [thinking, setThinking] = useState(false);
+  const [aiStatus, setAiStatus] = useState('');
   const send = (q) => {
-    const question = q.trim().slice(0, 300);
+    const question = q.trim().slice(0, 400);
     if (!question) return;
     setMessages((m) => [...m, { role: 'user', text: question }]);
     setThinking(true);
     const local = askCopilot(question, state, intel);
-    // With an LLM configured, the model rewrites the answer from the same computed data;
+    // With AI configured, the answer streams in from Groq, grounded in the same computed data;
     // the structured cards always come from the deterministic engine.
     if (state.aiEnabled) {
-      const context = {
-        clusters: intel.clusters.slice(0, 5).map((c) => ({ label: c.label, requests: c.requests, supporters: c.supporters, summary: c.summary })),
-        topIdeas: intel.ranked.slice(0, 8).map((i) => ({ title: i.title, score: intel.scored.get(i.id).score, supports: i.supports, volunteers: i.volunteers.length })),
-        localAnswer: local.text,
-        items: local.blocks?.[0]?.items?.slice(0, 8).map((x) => x.member ? { name: x.member.name, role: x.member.role, skills: x.member.skills, why: x.why } : x.title || x.text || x.topic || x.subject || x.label),
+      const context = { ...aiContext(state, intel), localAnswer: local.text,
+        items: local.blocks?.[0]?.items?.slice(0, 8).map((x) => x.member ? { name: x.member.name, role: x.member.role, skills: x.member.skills, why: x.why } : x.title || x.text || x.topic || x.subject || x.label) };
+      const history = messages.slice(-6).map((m) => ({ role: m.role, text: m.text }));
+      let acc = ''; let shown = false;
+      const upsert = (patch) => {
+        const first = !shown; // decide now, not when React later runs the updater
+        shown = true;
+        setMessages((m) => (first ? [...m, { role: 'ai', ...local, text: '', llm: true, ...patch }] : m.map((x, i) => (i === m.length - 1 ? { ...x, ...patch } : x))));
       };
-      fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task: 'copilot', question, context }) })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => setMessages((m) => [...m, { role: 'ai', ...local, text: d?.text || local.text, llm: !!d?.text }]))
-        .catch(() => setMessages((m) => [...m, { role: 'ai', ...local }]))
-        .finally(() => setThinking(false));
+      aiStream({ question, context, history, creator: CREATOR.name }, {
+        onToken: (tok) => { acc += tok; upsert({ text: acc, streaming: true }); setAiStatus(''); setThinking(false); },
+        onStatus: (st) => setAiStatus(st),
+        onReset: () => { acc = ''; if (shown) upsert({ text: '' }); },
+      }).then((r) => {
+        if (r.ok) upsert({ text: acc, streaming: false, meta: r.meta, sources: r.sources, tools: r.tools });
+        else if (shown) upsert({ text: acc, streaming: false }); // keep what we got (and stop the caret)
+        else setMessages((m) => [...m, { role: 'ai', ...local, note: r.error && r.code ? `${r.error}. Here is the built-in answer.` : null }]);
+      }).finally(() => { setThinking(false); setAiStatus(''); });
       return;
     }
     setTimeout(() => {
@@ -68,11 +83,7 @@ export default function CreatorApp() {
   const go = (p, extra = {}) => { dispatch({ type: 'NAV', patch: { creatorPage: p, ...(p === 'communities' ? { communityId: null } : {}), ...(p === 'projects' && !('openProjectId' in extra) ? { openProjectId: null } : {}), ...extra } }); setMobileNav(false); window.scrollTo({ top: 0 }); };
   const highOpps = intel.opps.filter((o) => !o.ai.isSpam && o.ai.priority >= 50 && o.status === 'new').length;
 
-  useEffect(() => {
-    const onKey = (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setCopilotOpen((o) => !o); } };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const ask = (q) => { setCopilotOpen(true); send(q); };
   const copyInvite = async () => {
@@ -82,30 +93,35 @@ export default function CreatorApp() {
 
   const renderSidebar = (mini) => (
     <nav aria-label="Creator navigation" className={cx('flex h-full flex-col bg-night py-4 text-white', mini ? 'px-2' : 'px-2.5')}>
-      {/* Brand + collapse toggle */}
-      <div className={cx('flex items-center', mini ? 'flex-col gap-2' : 'justify-between px-1.5')}>
-        {mini ? <Logo dark iconOnly /> : <Logo dark />}
-        <button onClick={toggleCollapsed} aria-label={mini ? 'Expand sidebar' : 'Collapse sidebar'} title={mini ? 'Expand' : 'Collapse'}
-          className="hidden rounded-lg p-1.5 text-white/50 transition hover:bg-night-2 hover:text-white lg:inline-flex">
-          {mini ? <PanelLeftOpen className="h-4 w-4" aria-hidden="true" /> : <PanelLeftClose className="h-4 w-4" aria-hidden="true" />}
-        </button>
+      {/* Brand + collapse toggle. When collapsed, the logo itself expands the sidebar. */}
+      <div className={cx('flex items-center', mini ? 'justify-center' : 'justify-between px-1.5')}>
+        {mini ? <CollapsedLogoToggle onClick={toggleCollapsed} /> : (
+          <>
+            <Logo dark />
+            <button onClick={toggleCollapsed} aria-label="Collapse sidebar" title="Collapse"
+              className="hidden rounded-lg p-1.5 text-white/50 transition hover:bg-night-2 hover:text-white lg:inline-flex">
+              <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Primary nav */}
-      <ul className="no-scrollbar -mx-1 mt-3 min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1">
+      <ul className={cx('no-scrollbar mt-4 min-h-0 flex-1', mini ? 'space-y-1.5 overflow-visible' : '-mx-1 space-y-0.5 overflow-y-auto px-1')}>
         {NAV.map(([id, label, Icon]) => {
           const active = page === id;
           const badge = id === 'opportunities' ? highOpps : id === 'ideas' ? intel.clusters.length : null;
           return (
             <Fragment key={id}>
             {NAV_SECTION[id] && (mini
-              ? <li aria-hidden="true" className="mx-3 my-2 h-px bg-white/10" />
+              ? <li aria-hidden="true" className="mx-auto my-3 h-px w-6 bg-white/10" />
               : <li className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[.16em] text-white/35">{NAV_SECTION[id]}</li>)}
             <li>
-              <button onClick={() => go(id)} aria-current={active ? 'page' : undefined} title={mini ? label : undefined}
-                className={cx('relative flex w-full items-center rounded-full text-[13px] transition', mini ? 'justify-center p-2.5' : 'gap-2.5 px-3 py-2', active ? 'bg-white font-semibold text-ink shadow-[0_8px_20px_-10px_rgba(255,255,255,.5)]' : 'text-white/65 hover:bg-white/[.07] hover:text-white')}>
+              <button onClick={() => go(id)} aria-current={active ? 'page' : undefined} aria-label={mini ? label : undefined}
+                className={cx('group relative flex items-center text-[13px] transition', mini ? 'mx-auto h-11 w-11 justify-center rounded-2xl' : 'w-full gap-2.5 rounded-full px-3 py-2', active ? 'bg-white font-semibold text-ink shadow-[0_8px_20px_-10px_rgba(255,255,255,.5)]' : 'text-white/65 hover:bg-white/[.07] hover:text-white')}>
                 <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
                 {!mini && <span className="flex-1 text-left">{label}</span>}
+                {mini && <RailTip>{label}{badge ? ` · ${badge}` : ''}</RailTip>}
                 {badge ? (
                   mini
                     ? <span className={cx('absolute right-1.5 top-1.5 h-2 w-2 rounded-full', active ? 'bg-accent' : 'bg-coral')} />
@@ -120,10 +136,11 @@ export default function CreatorApp() {
 
       {/* Bottom: AI + invite. Account actions (edit profile, log out…) live in the top-bar profile menu. */}
       <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
-        <button onClick={() => { setCopilotOpen(true); setMobileNav(false); }} title={mini ? 'Ask FanOS AI (⌘K)' : undefined}
-          className={cx('flex w-full items-center rounded-full bg-gradient-to-r from-accent to-[#9b4bf0] text-[13px] font-medium shadow-lg shadow-accent/20 transition hover:brightness-110', mini ? 'justify-center p-2.5' : 'gap-2.5 px-3 py-2')}>
-          <Sparkles className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
-          {!mini && <><span className="flex-1 text-left">Ask FanOS AI</span><kbd className="rounded-full bg-white/20 px-2 py-0.5 text-[10px]">⌘K</kbd></>}
+        <button onClick={() => { setCopilotOpen(true); setMobileNav(false); }} aria-label={mini ? 'Ask FanOS AI' : undefined}
+          className={cx('group relative flex items-center bg-gradient-to-r from-accent to-[#9b4bf0] text-[13px] font-medium shadow-lg shadow-accent/20 transition hover:brightness-110', mini ? 'mx-auto h-11 w-11 justify-center rounded-2xl' : 'w-full gap-2.5 rounded-full px-3 py-2')}>
+          <AiIcon className="h-[18px] w-[18px] shrink-0" />
+          {mini && <RailTip>Ask FanOS AI</RailTip>}
+          {!mini && <><span className="flex-1 text-left">Ask FanOS AI</span></>}
         </button>
         {!mini && <InviteCard />}
       </div>
@@ -149,19 +166,16 @@ export default function CreatorApp() {
             <div className="flex items-center">
               <button className="rounded-lg p-2 hover:bg-line-2 lg:hidden" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu className="h-5 w-5" /></button>
             </div>
-            <form className="relative w-full max-w-md justify-self-center" onSubmit={(e) => { e.preventDefault(); const q = new FormData(e.currentTarget).get('q'); if (q) { ask(String(q)); e.currentTarget.reset(); } }}>
-              <Sparkles className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-accent" aria-hidden="true" />
-              <label htmlFor="top-ask" className="sr-only">Search your community</label>
-              <input id="top-ask" name="q" autoComplete="off" placeholder="Search your community…" className="h-10 w-full rounded-full border border-line bg-white/80 pl-9 pr-14 text-[13px] shadow-sm outline-none transition hover:border-ink/15 focus:border-accent focus:bg-white focus:shadow-md focus:ring-4 focus:ring-accent/10" />
-              <kbd className="absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded-md border border-line bg-paper px-1.5 py-0.5 text-[10px] text-muted sm:block">⌘K</kbd>
-            </form>
-            <div className="flex items-center justify-end">
+            <div className="w-full max-w-md justify-self-center"><SearchTrigger onClick={() => setSearchOpen(true)} placeholder="Search ideas, people, spaces, projects…" /></div>
+            <div className="flex items-center justify-end gap-2.5">
+              <AskAiButton onClick={() => setCopilotOpen(true)} />
               <ProfileMenu
                 name={state.user?.name || CREATOR.name}
+                avatar={state.user?.avatar}
                 email={state.user?.email}
                 sections={[
                   [
-                    { icon: UserCog, label: 'Edit profile', onClick: () => dispatch({ type: 'NAV', patch: { view: 'creator-setup' } }) },
+                    { icon: UserCog, label: 'Profile & accounts', onClick: () => go('profile') },
                     { icon: Link2, label: 'Copy invite link', onClick: copyInvite },
                   ],
                   [{ icon: LogOut, label: 'Log out', onClick: () => auth.logout() }],
@@ -178,9 +192,17 @@ export default function CreatorApp() {
           {page === 'people' && <PeoplePage key={state.peopleQuery || 'browse'} />}
           {page === 'communities' && <CommunitiesPage go={go} />}
           {page === 'projects' && <ProjectsPage />}
+          {page === 'profile' && <ProfilePage />}
         </main>
       </div>
-      <Copilot open={copilotOpen} messages={messages} thinking={thinking} send={send} onClose={() => setCopilotOpen(false)} go={go} />
+      <SearchPalette open={searchOpen} setOpen={setSearchOpen} mode="creator" onAsk={ask}
+        pages={[['dashboard', 'Dashboard', LayoutDashboard], ['brief', 'Community Brief', Newspaper], ['ideas', 'Ideas', Lightbulb], ['opportunities', 'Opportunities', Inbox], ['people', 'People', Users], ['communities', 'Communities', Boxes], ['projects', 'Projects', FolderKanban]].map(([id, label, icon]) => ({ id, label, icon, open: (extra) => go(id, extra) }))}
+        actions={[
+          { id: 'ai', label: 'Ask FanOS AI', hint: 'Chat with your community data', icon: AiIcon, run: () => setCopilotOpen(true) },
+          { id: 'invite', label: 'Copy invite link', hint: 'Share it with your followers', icon: Link2, run: copyInvite },
+          { id: 'space', label: 'Create a space', hint: 'Group your fans by interest', icon: Plus, run: () => dispatch({ type: 'NAV', patch: { modal: { type: 'community' } } }) },
+        ]} />
+      <Copilot open={copilotOpen} messages={messages} thinking={thinking} status={aiStatus} send={send} onClose={() => setCopilotOpen(false)} go={go} />
     </div>
   );
 }
@@ -205,8 +227,16 @@ function InviteCard() {
 }
 
 // ------------------------------------------------------------------ Copilot
-function Copilot({ open, messages, thinking, send: rawSend, onClose, go }) {
+function Copilot({ open, messages, thinking, status, send: rawSend, onClose, go }) {
   const { state, intel } = useStore();
+  const suggestions = state.aiEnabled ? AI_SUGGESTIONS.creator : COPILOT_SUGGESTIONS;
+  const openSource = (src) => {
+    if (src.type === 'idea') openM.idea(src.id);
+    else if (src.type === 'member') openM.member(src.id);
+    else if (src.type === 'opportunity') { go('opportunities', { openOppId: src.id }); onClose(); }
+    else if (src.type === 'project') { go('projects', { openProjectId: src.id }); onClose(); }
+    else if (src.type === 'space') { go('communities', { communityId: src.id, communityTab: 'feed' }); onClose(); }
+  };
   const openM = useOpen();
   const [input, setInput] = useState('');
   const listRef = useRef(null);
@@ -226,10 +256,10 @@ function Copilot({ open, messages, thinking, send: rawSend, onClose, go }) {
     <div className="fixed inset-0 z-40 flex justify-end bg-ink/25" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <section role="dialog" aria-modal="true" aria-label="FanOS AI copilot" className="flex h-full w-full max-w-lg animate-slide-in flex-col bg-white shadow-pop">
         <header className="flex items-center gap-3 border-b border-line px-5 py-4">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-coral text-white"><Sparkles className="h-4 w-4" aria-hidden="true" /></span>
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-coral text-white"><AiIcon className="h-[18px] w-[18px]" /></span>
           <div className="flex-1">
             <p className="font-display font-semibold text-ink">FanOS AI</p>
-            <p className="text-xs text-muted">Grounded in {state.members.length} member profiles, {state.ideas.length} ideas & {intel.opps.length} inbox items</p>
+            <p className="text-xs text-muted">{state.aiEnabled ? 'Ask anything in your own words. ' : ''}It checks your real community data.</p>
           </div>
           <button onClick={onClose} aria-label="Close copilot" className="rounded-full p-1.5 text-muted hover:bg-line-2"><X className="h-5 w-5" /></button>
         </header>
@@ -239,7 +269,7 @@ function Copilot({ open, messages, thinking, send: rawSend, onClose, go }) {
               <p className="font-display text-xl font-semibold text-ink">Ask anything about your <span className="ai-gradient-text">community</span>.</p>
               <p className="mt-1 text-sm text-muted">Search your audience like a database.</p>
               <div className="mt-5 grid gap-2">
-                {COPILOT_SUGGESTIONS.map((s) => (
+                {suggestions.map((s) => (
                   <button key={s} onClick={() => send(s)} className="flex items-center justify-between rounded-xl border border-line px-3.5 py-2.5 text-left text-sm text-ink-2 transition hover:border-accent/40 hover:bg-accent-soft/40 hover:text-ink">
                     {s}<ArrowUpRight className="h-4 w-4 text-muted" aria-hidden="true" />
                   </button>
@@ -251,27 +281,28 @@ function Copilot({ open, messages, thinking, send: rawSend, onClose, go }) {
             <div key={i} className="flex justify-end"><p className="max-w-[85%] rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-sm text-white">{m.text}</p></div>
           ) : (
             <div key={i} className="animate-fade-up">
-              <p className="text-sm leading-relaxed text-ink">{m.text}</p>
-              {m.llm && <p className="mt-1 text-[10px] font-medium uppercase tracking-wider text-muted">Written by LLM from FanOS data</p>}
-              {m.blocks?.map((b, k) => <CopilotBlock key={k} block={b} openM={openM} go={go} onClose={onClose} />)}
-              {m.cta && (
+              <RichText text={m.text} />{m.streaming && <span aria-hidden="true" className="ml-0.5 inline-block h-4 w-0.5 translate-y-0.5 animate-pulse bg-accent" />}
+              {m.note && <p className="mt-1 text-xs text-muted">{m.note}</p>}
+              {m.llm && !m.streaming && <SourceChips sources={m.sources} onOpen={openSource} />}
+              {!m.llm && m.blocks?.map((b, k) => <CopilotBlock key={k} block={b} openM={openM} go={go} onClose={onClose} />)}
+              {!m.llm && m.cta && (
                 <Button size="sm" variant="soft" className="mt-3" icon={ArrowUpRight} onClick={() => { go(m.cta.to, m.cta.query ? { peopleQuery: m.cta.query } : {}); onClose(); }}>{m.cta.label}</Button>
               )}
             </div>
           ))}
           {thinking && (
-            <p className="flex items-center gap-2 text-sm text-muted"><Loader2 className="h-4 w-4 animate-spin text-accent" aria-hidden="true" /> Analyzing {state.members.length + state.ideas.length} records…</p>
+            <p className="flex items-center gap-2 text-sm text-muted"><Loader2 className="h-4 w-4 animate-spin text-accent" aria-hidden="true" /> {status || `Analyzing ${state.members.length + state.ideas.length} records…`}</p>
           )}
         </div>
         <form onSubmit={(e) => { e.preventDefault(); send(input); }} className="border-t border-line p-4">
           {messages.length > 0 && (
             <div className="no-scrollbar mb-3 flex gap-2 overflow-x-auto">
-              {COPILOT_SUGGESTIONS.slice(0, 6).map((s) => <button type="button" key={s} onClick={() => send(s)} className="shrink-0 rounded-full border border-line px-3 py-1 text-xs text-ink-2 hover:border-accent/40">{s}</button>)}
+              {suggestions.slice(0, 6).map((s) => <button type="button" key={s} onClick={() => send(s)} className="shrink-0 rounded-full border border-line px-3 py-1 text-xs text-ink-2 hover:border-accent/40">{s}</button>)}
             </div>
           )}
           <div className="flex gap-2">
             <label htmlFor="copilot-input" className="sr-only">Ask FanOS AI</label>
-            <input id="copilot-input" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} maxLength={300} placeholder="Find designers who contributed in the last 30 days…" className="h-11 flex-1 rounded-xl border border-line px-3.5 text-sm outline-none focus:border-accent" />
+            <input id="copilot-input" ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)} maxLength={400} placeholder={state.aiEnabled ? 'Ask in your own words — English or Hinglish…' : 'Find designers who contributed in the last 30 days…'} className="h-11 flex-1 rounded-xl border border-line px-3.5 text-sm outline-none focus:border-accent" />
             <Button type="submit" variant="accent" icon={Send} aria-label="Send" disabled={!input.trim() || thinking} />
           </div>
         </form>
@@ -290,14 +321,14 @@ function CopilotBlock({ block, openM, go, onClose }) {
     <div className={wrap}>{block.items.map((i) => (
       <button key={i.id} onClick={() => openM.idea(i.id)} className="flex w-full items-center gap-3 p-3 text-left hover:bg-paper">
         <ScoreRing score={intel.scored.get(i.id).score} size={36} stroke={4} />
-        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-ink">{i.title}</span><span className="text-xs text-muted">❤️ {i.supports} • 🤝 {i.volunteers.length}</span></span>
+        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-ink">{i.title}</span><span className="inline-flex items-center gap-2 text-xs text-muted"><span className="inline-flex items-center gap-1"><Heart className="h-3 w-3 text-coral" aria-hidden="true" />{i.supports}</span><span className="inline-flex items-center gap-1"><Handshake className="h-3 w-3 text-mint" aria-hidden="true" />{i.volunteers.length}</span></span></span>
       </button>
     ))}</div>
   );
   if (block.type === 'clusters') return (
     <div className={wrap}>{block.items.map((c) => (
       <button key={c.id} onClick={() => { go('ideas'); onClose(); }} className="block w-full p-3 text-left hover:bg-paper">
-        <span className="flex items-center justify-between"><span className="text-sm font-semibold text-ink">🔥 {c.label}</span><Chip tone="accent">{c.requests} requests</Chip></span>
+        <span className="flex items-center justify-between"><span className="text-sm font-semibold text-ink">{c.label}</span><Chip tone="accent">{c.requests} requests</Chip></span>
         <span className="mt-1 line-clamp-2 block text-xs text-muted">{c.summary}</span>
       </button>
     ))}</div>
@@ -330,7 +361,7 @@ function CopilotBlock({ block, openM, go, onClose }) {
   );
   if (block.type === 'things') return (
     <ol className={wrap}>{block.items.map((t, i) => (
-      <li key={i} className="flex gap-3 p-3"><span className="text-lg" aria-hidden="true">{t.icon}</span><span className="min-w-0"><span className="block text-sm font-medium text-ink">{t.title}</span><span className="line-clamp-2 text-xs text-muted">{t.detail}</span></span></li>
+      <li key={i} className="flex gap-3 p-3">{(() => { const [TIcon, tone] = BRIEF_ICON[t.icon] || [Lightbulb, 'bg-line-2 text-ink-2']; return <span className={cx('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', tone)} aria-hidden="true"><TIcon className="h-4 w-4" /></span>; })()}<span className="min-w-0"><span className="block text-sm font-medium text-ink">{t.title}</span><span className="line-clamp-2 text-xs text-muted">{t.detail}</span></span></li>
     ))}</ol>
   );
   return null;

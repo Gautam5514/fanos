@@ -18,7 +18,7 @@ async function api(path, opts = {}) {
   const r = await fetch(path, { credentials: 'same-origin', ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
   let data = null;
   try { data = await r.json(); } catch { /* empty */ }
-  if (!r.ok) { const e = new Error(data?.error || `Request failed (${r.status})`); e.status = r.status; throw e; }
+  if (!r.ok) { const e = new Error(data?.error || `Request failed (${r.status})`); e.status = r.status; e.code = data?.code; throw e; }
   return data;
 }
 
@@ -70,7 +70,8 @@ export function StoreProvider({ children }) {
     // Opened at an app URL (refresh, bookmark, shared link)? Keep that page if it belongs to this user's app.
     const fromUrl = fromAuth ? null : parsePath(window.location.pathname, user.role);
     // A finished creator may also open /setup directly to edit their profile.
-    const allowed = target === 'creator' ? ['creator', 'creator-setup'] : target === 'member' ? ['member'] : [];
+    const allowed = target === 'creator' ? ['creator'] : target === 'member' ? ['member'] : [];
+    // (/setup is only for creators who have not finished their profile; everyone else lands on the dashboard)
     const keep = fromUrl && allowed.includes(fromUrl.view);
     // Public pages (/i/:id) stay open for signed-in users too.
     if (fromUrl?.view === 'public-idea') { rawDispatch({ type: 'NAV', patch: { authChecked: true } }); return; }
@@ -83,7 +84,7 @@ export function StoreProvider({ children }) {
     try { ui = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); } catch { /* corrupt */ }
     rawDispatch({ type: 'HYDRATE', state: { ...(ui || {}) } });
     hydrated.current = true;
-    api('/api/ai').then((d) => rawDispatch({ type: 'NAV', patch: { aiEnabled: !!d?.enabled } })).catch(() => {});
+    api('/api/ai').then((d) => rawDispatch({ type: 'NAV', patch: { aiEnabled: !!d?.enabled, aiProvider: d?.provider || null, aiModels: d?.models || null } })).catch(() => {});
     api('/api/auth/me').then((d) => {
       rawDispatch({ type: 'NAV', patch: { serverError: d?.configured === false ? 'Accounts are not configured on this server yet (Supabase keys missing).' : null } });
       if (d?.user) enterLive(d.user);
@@ -127,6 +128,8 @@ export function StoreProvider({ children }) {
       await enterLive(d.user, { fromAuth: true });
       return d.user;
     },
+    // Google sign-in: the backend verifies the Firebase ID token and opens the same session as email login.
+    async google(body) { const d = await api('/api/auth/google', { method: 'POST', body: JSON.stringify(body) }); await enterLive(d.user, { fromAuth: true }); return d.user; },
     async login(body) { const d = await api('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }); await enterLive(d.user, { fromAuth: true }); return d.user; },
     // Attach a member (who has no community yet) to a creator's community via an invite link,
     // then re-enter the app so their community data loads.
@@ -136,6 +139,8 @@ export function StoreProvider({ children }) {
       await enterLive(d.user, { fromAuth: true });
       return d.user;
     },
+    // A fan with no community picks "I'm a creator instead": switch the account, then set up the community.
+    async becomeCreator() { const d = await api('/api/auth/become-creator', { method: 'POST', body: '{}' }); rawDispatch({ type: 'NAV', patch: { needsCommunity: false } }); await enterLive(d.user, { fromAuth: true }); return d.user; },
     async logout() {
       try { await api('/api/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
       rawDispatch({ type: 'SET_USER', user: null });

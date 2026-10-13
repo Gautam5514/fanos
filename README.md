@@ -55,9 +55,10 @@ Capture details and refresh instructions are in [docs/screenshots/README.md](doc
 | **AI signals** | Idea summaries, similar-idea clustering, trending topics, Signal Scores, and weekly briefs. |
 | **Collaboration** | Select ideas for pilots, assign owners and contributors, and track project tasks and updates. |
 | **Promotion** | Feature ideas, share public idea pages, and draft posts for Instagram, X, LinkedIn, and the community. |
-| **Creator copilot** | Ask questions about community activity; optionally enable LLM-generated responses. |
+| **Creator copilot** | Ask questions about community activity. With a Groq key, answers stream in live and remember the conversation. |
+| **AI tools (Groq)** | Idea Coach for members, AI reply drafts for the opportunities inbox, an AI weekly summary on the Brief page, and promo post writing. |
 
-The built-in analysis engine works without an external AI key. An optional backend LLM integration adds richer summaries, copilot answers, and promotion copy.
+The built-in analysis engine works without an AI key. Adding a [Groq](https://console.groq.com/keys) key to the backend turns on the AI features above; remove the key and everything falls back to the built-in engine.
 
 ### From idea to execution
 
@@ -80,7 +81,7 @@ The lifecycle is derived from stored idea and project data. Each idea also has a
 
 - **Node.js 22 or later** and npm.
 - A **Supabase project** for authentication and persistent community data.
-- An optional OpenAI-compatible API key for LLM features.
+- An optional [Groq API key](https://console.groq.com/keys) for the AI features (any OpenAI-compatible provider also works as a fallback).
 
 Run the commands below from the repository root—the directory containing `frontend/` and `backend/`.
 
@@ -148,9 +149,11 @@ Open **http://localhost:3000**. The API runs at **http://localhost:4000**; its h
 | `SUPABASE_PUBLISHABLE_KEY` | Yes | Publishable key used for authentication. |
 | `SUPABASE_SECRET_KEY` | Yes | Server-only key for database access and auth administration. |
 | `PORT` | No | API port; defaults to `4000`. |
-| `OPENAI_API_KEY` | No | Enables optional LLM features. |
-| `OPENAI_MODEL` | No | Overrides the backend's default model. |
-| `OPENAI_BASE_URL` | No | Points LLM requests at an OpenAI-compatible endpoint. |
+| `GROQ_API_KEY` | No | Enables the AI features (Groq). Server-side only. |
+| `GROQ_MODEL` | No | Smart model for chat and replies. Default `llama-3.3-70b-versatile`. |
+| `GROQ_FAST_MODEL` | No | Instant tasks such as idea summaries. Default `llama-3.1-8b-instant`. |
+| `GROQ_STRUCTURED_MODEL` | No | Strict-JSON model for the Idea Coach and weekly summary. Default `openai/gpt-oss-20b`. |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL` | No | Fallback for another OpenAI-compatible provider, used only when `GROQ_API_KEY` is empty. |
 | `FEEDBACK_ADMIN_TOKEN` | No | Admin access to legacy creator feedback. |
 | `SUPABASE_ACCESS_TOKEN` | No | Supabase CLI token; not required by the application runtime. |
 
@@ -169,7 +172,7 @@ flowchart LR
     Browser[Browser] --> UI[Next.js frontend]
     UI -->|Same-origin /api/* proxy| API[Express backend]
     API --> DB[Supabase Auth + Postgres]
-    API -. Optional LLM requests .-> LLM[OpenAI-compatible API]
+    API -. Optional AI requests .-> LLM[Groq API]
 ```
 
 - **Frontend:** Next.js 16, React 19, Tailwind CSS 4, and Lucide icons. Handles role-based navigation, UI state, optimistic updates, and built-in analysis.

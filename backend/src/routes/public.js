@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { loadState } from '../lib/db.js';
 import { rateLimited, getCommunityCreator } from '../lib/auth.js';
 import { ideaStage } from '../shared/reducer.js';
+import { avatarFor } from '../lib/avatar.js';
 
 const router = Router();
 
@@ -27,10 +28,10 @@ router.get('/community/:creatorId', async (req, res) => {
   res.json({
     creatorId: creator.id,
     ready: !!c.claimed, // false until the creator finishes setting up their profile
-    creator: c.claimed ? { name: c.name || '', handle: c.handle || '', niche: c.niche || '', platforms: (c.platforms || []).map((p) => ({ name: p.name, followers: p.followers })) } : { name: creator.name || '' },
+    creator: c.claimed ? { avatar: await avatarFor(creator.id), name: c.name || '', handle: c.handle || '', niche: c.niche || '', bio: c.bio || '', platforms: (c.platforms || []).map((p) => ({ name: p.name, handle: p.handle || '', followers: p.followers })) } : { name: creator.name || '', avatar: await avatarFor(creator.id) },
     members: st.members.length,
     ideas: st.ideas.filter((i) => i.status !== 'archived').length,
-    communities: st.communities.map((x) => ({ name: x.name, emoji: x.emoji })),
+    communities: st.communities.map((x) => ({ name: x.name, emoji: x.emoji, description: x.description || '', members: x.members || 0 })),
   });
 });
 

@@ -3,7 +3,31 @@
 // Shared page chrome so every screen carries the landing page's look:
 // an aurora backdrop, a dark animated brand panel for split-screen flows,
 // a glass top bar for standalone pages, and a consistent page header.
+import { PanelLeftOpen } from 'lucide-react';
 import { Logo, cx } from './ui';
+
+// Collapsed sidebar: the logo IS the expand button. On hover/focus it swaps to the "expand" icon.
+// Small label that slides out to the right of a collapsed-sidebar icon. Parent needs `group relative`.
+export function RailTip({ children }) {
+  return (
+    <span role="tooltip" className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-x-1 -translate-y-1/2 whitespace-nowrap rounded-lg bg-white px-2.5 py-1.5 text-xs font-semibold text-ink opacity-0 shadow-pop transition duration-150 group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100">
+      {children}
+    </span>
+  );
+}
+
+export function CollapsedLogoToggle({ onClick }) {
+  return (
+    <button type="button" onClick={onClick} aria-label="Expand sidebar"
+      className="group group/logo relative flex h-11 w-11 items-center justify-center rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-white/40">
+      <span className="transition duration-200 group-hover/logo:scale-75 group-hover/logo:opacity-0 group-focus-visible/logo:scale-75 group-focus-visible/logo:opacity-0"><Logo dark iconOnly size={34} /></span>
+      <span aria-hidden="true" className="absolute inset-0 flex scale-90 items-center justify-center rounded-2xl bg-white/10 text-white opacity-0 transition duration-200 group-hover/logo:scale-100 group-hover/logo:opacity-100 group-focus-visible/logo:scale-100 group-focus-visible/logo:opacity-100">
+        <PanelLeftOpen className="h-5 w-5" />
+      </span>
+      <RailTip>Expand sidebar</RailTip>
+    </button>
+  );
+}
 
 // Grid + slowly drifting color blobs. Place inside a `relative` parent.
 export function Aurora({ className, tone = 'light' }) {
@@ -22,15 +46,18 @@ export function Aurora({ className, tone = 'light' }) {
 export function SplitShell({ eyebrow, panelTitle, panel, panelFooter, topRight, children, wide }) {
   return (
     <div className="min-h-screen bg-paper lg:grid lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-      <aside className="relative hidden overflow-hidden bg-night lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:justify-between lg:p-12">
+      <aside className="relative hidden overflow-hidden bg-night lg:sticky lg:top-0 lg:block lg:h-screen">
         <Aurora tone="dark" />
-        <div className="relative"><Logo dark /></div>
-        <div className="relative">
-          {eyebrow && <p className="text-[11px] font-semibold uppercase tracking-[.16em] text-white/50">{eyebrow}</p>}
-          {panelTitle && <h2 className="mt-2 text-balance font-display text-3xl font-semibold leading-tight text-white xl:text-4xl">{panelTitle}</h2>}
-          {panel && <div className="mt-8">{panel}</div>}
+        {/* The panel content scrolls on its own, so tall previews are never cut off on short screens. */}
+        <div className="scroll-thin relative flex h-full flex-col justify-between gap-8 overflow-y-auto p-10 xl:p-12">
+          <div><Logo dark /></div>
+          <div>
+            {eyebrow && <p className="text-[11px] font-semibold uppercase tracking-[.16em] text-white/50">{eyebrow}</p>}
+            {panelTitle && <h2 className="mt-2 text-balance font-display text-3xl font-semibold leading-tight text-white xl:text-4xl">{panelTitle}</h2>}
+            {panel && <div className="mt-6">{panel}</div>}
+          </div>
+          <div className="text-sm text-white/45">{panelFooter ?? 'Followers → Communities → Ideas → AI Signals → Action'}</div>
         </div>
-        <div className="relative text-sm text-white/45">{panelFooter ?? 'Followers → Communities → Ideas → AI Signals → Action'}</div>
       </aside>
 
       <div className="relative flex min-h-screen flex-col overflow-x-clip">
@@ -66,9 +93,7 @@ export function PageHeader({ eyebrow, icon: Icon, title, description, actions, c
     <div className={cx('relative mb-6 flex animate-fade-up flex-col justify-between gap-4 md:flex-row md:items-end', className)}>
       {/* Soft premium glow behind the heading. */}
       <div aria-hidden="true" className="pointer-events-none absolute -left-6 -top-8 -z-10 h-28 w-72 rounded-full bg-gradient-to-r from-accent/15 via-[#c06bff]/10 to-transparent blur-2xl" />
-      <div className="relative min-w-0 max-w-3xl pl-4">
-        {/* Accent bar runs down the left edge of the header. */}
-        <span aria-hidden="true" className="absolute left-0 top-1 h-[calc(100%-0.5rem)] w-1 rounded-full bg-gradient-to-b from-accent to-[#9b4bf0]" />
+      <div className="relative min-w-0 max-w-3xl">
         {eyebrow && (
           <p className="inline-flex items-center gap-1.5 rounded-full border border-accent/15 bg-accent-soft/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.14em] text-accent shadow-sm shadow-accent/5">
             {Icon && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}{eyebrow}
@@ -86,8 +111,24 @@ export function Grad({ children }) {
   return <span className="ai-gradient-animated">{children}</span>;
 }
 
-// Vertical stepper for the dark brand panel.
-export function PanelSteps({ steps, current }) {
+// Stepper for the dark brand panel. `compact` renders a single horizontal row (saves height).
+export function PanelSteps({ steps, current, compact = false }) {
+  if (compact) {
+    return (
+      <ol className="flex items-center gap-2" aria-label="Progress">
+        {steps.map((s, i) => {
+          const done = i < current, on = i === current;
+          return (
+            <li key={s} className="flex min-w-0 flex-1 items-center gap-2" aria-current={on ? 'step' : undefined}>
+              <span className={cx('flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition', done ? 'bg-gradient-to-br from-accent to-coral text-white' : on ? 'bg-white text-night' : 'bg-white/10 text-white/50')}>{done ? '✓' : i + 1}</span>
+              <span className={cx('truncate text-xs', on ? 'font-semibold text-white' : done ? 'text-white/80' : 'text-white/45')}>{s}</span>
+              {i < steps.length - 1 && <span aria-hidden="true" className={cx('h-px flex-1', done ? 'bg-white/40' : 'bg-white/10')} />}
+            </li>
+          );
+        })}
+      </ol>
+    );
+  }
   return (
     <ol className="space-y-1">
       {steps.map((s, i) => {

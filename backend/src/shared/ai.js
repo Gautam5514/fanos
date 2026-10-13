@@ -477,7 +477,11 @@ export function parsePeopleQuery(q) {
 }
 
 export function searchPeople(q, members) {
-  const p = parsePeopleQuery(q);
+  return searchPeopleBy(parsePeopleQuery(q), q, members);
+}
+
+// Same matching, but with filters that were already parsed (e.g. by the AI from a human sentence).
+export function searchPeopleBy(p, q, members) {
   const hasCriteria = p.roles.length || p.skills.length || p.interests.length || p.city || p.fresh;
   if (!hasCriteria) {
     // Free-text fallback: name / bio / skill substring match.

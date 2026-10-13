@@ -3,11 +3,10 @@
 // Account menu for the app top bar: avatar + name button that opens a dropdown with the
 // user's details and account actions. Shared by the creator and member apps.
 import { useEffect, useId, useRef, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
 import { Avatar, cx } from './ui';
 
 // sections: [[{ icon, label, onClick, danger? }, ...], ...] — rendered with dividers between.
-export default function ProfileMenu({ name, email, sections }) {
+export default function ProfileMenu({ name, email, sections, avatar }) {
   const [open, setOpen] = useState(false);
   const viaKeyboard = useRef(false); // focus the first item only when opened from the keyboard
   const ref = useRef(null);
@@ -36,17 +35,15 @@ export default function ProfileMenu({ name, email, sections }) {
 
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={(e) => { viaKeyboard.current = e.detail === 0; setOpen((o) => !o); }} aria-haspopup="menu" aria-expanded={open} aria-controls={menuId}
-        className={cx('flex items-center gap-2.5 rounded-full border bg-white/90 py-1 pl-1 pr-2.5 shadow-sm transition hover:border-ink/20 hover:bg-white', open ? 'border-accent/40 ring-4 ring-accent/10' : 'border-line')}>
-        <Avatar name={display} size={32} />
-        <span className="hidden max-w-[140px] truncate text-sm font-semibold text-ink sm:block">{display}</span>
-        <ChevronDown className={cx('h-4 w-4 text-muted transition-transform duration-200', open && 'rotate-180')} aria-hidden="true" />
+      <button type="button" onClick={(e) => { viaKeyboard.current = e.detail === 0; setOpen((o) => !o); }} aria-haspopup="menu" aria-expanded={open} aria-controls={menuId} aria-label={`Account menu — ${display}`} title={display}
+        className={cx('rounded-full p-[3px] outline-none ring-2 transition-all duration-200 focus-visible:ring-accent', open ? 'bg-white ring-accent shadow-md' : 'bg-white/80 ring-line shadow-sm hover:ring-accent/60 hover:shadow-md')}>
+        <Avatar name={display} size={34} src={avatar} />
       </button>
 
       {open && (
-        <div id={menuId} role="menu" aria-label="Account" className="absolute right-0 top-[calc(100%+8px)] z-50 w-56 origin-top-right animate-pop overflow-hidden rounded-2xl border border-line bg-white shadow-pop">
-          <div className="flex items-center gap-2.5 border-b border-line px-3.5 py-3">
-            <Avatar name={display} size={34} />
+        <div id={menuId} role="menu" aria-label="Account" className="absolute right-0 top-[calc(100%+10px)] z-50 w-64 origin-top-right animate-pop overflow-hidden rounded-2xl border border-line bg-white shadow-pop">
+          <div className="flex items-center gap-3 border-b border-line bg-paper/60 px-4 py-3.5">
+            <Avatar name={display} size={44} src={avatar} />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-ink">{display}</p>
               {email && <p className="truncate text-xs text-muted">{email}</p>}
