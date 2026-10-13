@@ -33,7 +33,9 @@ export function CollapsedLogoToggle({ onClick }) {
 export function Aurora({ className, tone = 'light' }) {
   const dark = tone === 'dark';
   return (
-    <div aria-hidden="true" className={cx('pointer-events-none absolute inset-0 overflow-hidden', className)}>
+    <div aria-hidden="true" className={cx('pointer-events-none absolute inset-0 overflow-hidden', className)}
+      // On the light page backdrop, fade the bottom edge out so the colour never ends in a hard line.
+      style={dark ? undefined : { WebkitMaskImage: 'linear-gradient(to bottom, #000 30%, transparent 100%)', maskImage: 'linear-gradient(to bottom, #000 30%, transparent 100%)' }}>
       <div className={cx('absolute inset-0', dark ? 'bg-grid-dark' : 'bg-grid')} />
       <div className={cx('hero-blob absolute -top-32 left-[8%] h-[420px] w-[420px] rounded-full blur-3xl', dark ? 'bg-accent/45' : 'bg-accent/15')} />
       <div className={cx('hero-blob absolute -top-20 right-[6%] h-[360px] w-[360px] rounded-full blur-3xl [animation-delay:-6s]', dark ? 'bg-coral/35' : 'bg-coral/12')} />

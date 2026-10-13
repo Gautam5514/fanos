@@ -36,8 +36,8 @@ export default function ProfileMenu({ name, email, sections, avatar }) {
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={(e) => { viaKeyboard.current = e.detail === 0; setOpen((o) => !o); }} aria-haspopup="menu" aria-expanded={open} aria-controls={menuId} aria-label={`Account menu — ${display}`} title={display}
-        className={cx('rounded-full p-[3px] outline-none ring-2 transition-all duration-200 focus-visible:ring-accent', open ? 'bg-white ring-accent shadow-md' : 'bg-white/80 ring-line shadow-sm hover:ring-accent/60 hover:shadow-md')}>
-        <Avatar name={display} size={34} src={avatar} />
+        className={cx('flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full p-0 leading-none outline-none ring-1 transition-all duration-200 focus-visible:ring-2 focus-visible:ring-accent', open ? 'ring-2 ring-accent' : 'ring-line hover:ring-2 hover:ring-accent/50')}>
+        <Avatar name={display} size={38} src={avatar} />
       </button>
 
       {open && (

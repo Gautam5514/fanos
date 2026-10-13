@@ -33,19 +33,63 @@ const GRADS = [
 ];
 function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
 
+// Some profile photos arrive with a round frame already baked in (a circle on a grey/white
+// background). We detect that once per photo and zoom in slightly, so the avatar shows the face,
+// not a ring inside a ring. Detection reads the photo's corners; if the browser can't (or the photo
+// is normal), nothing changes.
+const frameCache = new Map();
+function hasBakedFrame(src) {
+  if (frameCache.has(src)) return frameCache.get(src);
+  const p = new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    const t = setTimeout(() => resolve(false), 4000);
+    img.onerror = () => { clearTimeout(t); resolve(false); };
+    img.onload = () => {
+      clearTimeout(t);
+      try {
+        const N = 40; const c = document.createElement('canvas'); c.width = c.height = N;
+        const ctx = c.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, N, N);
+        const avg = (x, y, w = 3) => { const d = ctx.getImageData(x, y, w, w).data; let r = 0, g = 0, b2 = 0; const n = d.length / 4; for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b2 += d[i + 2]; } return [r / n, g / n, b2 / n]; };
+        const m = N / 2 - 1;
+        // the four corners and the four edge-middles: where a baked-in frame's background shows
+        const border = [avg(0, 0), avg(N - 3, 0), avg(0, N - 3), avg(N - 3, N - 3), avg(m, 0), avg(m, N - 3), avg(0, m), avg(N - 3, m)];
+        const dist = (u, v) => Math.hypot(u[0] - v[0], u[1] - v[1], u[2] - v[2]);
+        const uniform = border.every((u) => border.every((v) => dist(u, v) < 75));         // the whole border looks alike (allowing lighting)…
+        const plain = border.every((u) => Math.max(...u) - Math.min(...u) < 40);            // …and is grey/white, not colourful
+        const mean = border[0].map((_, i) => border.reduce((t, u) => t + u[i], 0) / border.length);
+        const centre = avg(N / 2 - 4, N / 2 - 4, 8);
+        resolve(uniform && plain && dist(mean, centre) > 35);                                // …and differs from the middle
+      } catch { resolve(false); } // browser blocked reading the pixels
+    };
+    img.src = src;
+  });
+  frameCache.set(src, p);
+  return p;
+}
+
 export function Avatar({ name = '?', size = 36, ring, className, src }) {
   const [failed, setFailed] = useState('');
+  const [zoom, setZoom] = useState(false);
+  useEffect(() => {
+    if (!src) return undefined;
+    let alive = true;
+    hasBakedFrame(src).then((v) => alive && setZoom(v));
+    return () => { alive = false; };
+  }, [src]);
   const [a, b] = GRADS[hash(name) % GRADS.length];
   const initials = name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+  const photo = !!src && failed !== src;
   return (
     <span
       aria-hidden="true"
-      className={cx('inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white select-none', ring && 'ring-2 ring-white', className)}
-      style={{ width: size, height: size, fontSize: Math.max(10, size * 0.38), background: `linear-gradient(135deg, ${a}, ${b})` }}
+      className={cx('inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-white select-none', ring && 'ring-2 ring-white', className)}
+      style={{ width: size, height: size, fontSize: Math.max(10, size * 0.38), background: photo ? '#eceaf2' : `linear-gradient(135deg, ${a}, ${b})` }}
     >
-      {src && failed !== src
+      {photo
         // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={src} alt="" width={size} height={size} referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(src)} className="h-full w-full rounded-full object-cover" />
+        ? <img src={src} alt="" width={size} height={size} referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(src)} className="h-full w-full object-cover" style={zoom ? { transform: 'scale(1.38)' } : undefined} />
         : initials}
     </span>
   );
